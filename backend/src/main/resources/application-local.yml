@@ -1,9 +1,5 @@
-# Local development profile. Activated automatically by `./mvnw spring-boot:run`
-# (see spring-boot-maven-plugin in pom.xml) or explicitly with SPRING_PROFILES_ACTIVE=local.
-
 spring:
   config:
-    # Read backend/.env as a properties file if it exists. Real environment variables still win.
     import: optional:file:.env[.properties]
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/german_reader}
@@ -14,7 +10,6 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
 
 translation:
-  # Mock by default so local development never spends Gemini quota.
   provider: ${TRANSLATION_PROVIDER:mock}
 
 logging:

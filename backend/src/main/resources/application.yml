@@ -1,7 +1,3 @@
-# Base configuration shared by every environment.
-# Values come from environment variables; there are deliberately no defaults for
-# anything that differs between environments, so a misconfigured deployment fails at startup.
-
 spring:
   application:
     name: german-reader
@@ -10,10 +6,8 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
   jpa:
-    # Flyway owns the schema; Hibernate only checks that entities match it.
     hibernate:
       ddl-auto: validate
-    # Close the DB session when the service call ends, not when the HTTP response is written.
     open-in-view: false
   flyway:
     locations: classpath:db/migration
@@ -21,7 +15,6 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
   error:
-    # Never leak stack traces or exception messages through Spring's default error page.
     include-stacktrace: never
     include-message: never
 
@@ -30,10 +23,8 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
 translation:
-  # mock | gemini — selects the TranslationProvider bean (Phase 3).
   provider: ${TRANSLATION_PROVIDER}
   gemini:
-    # Only read and validated when translation.provider=gemini.
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:}
     timeout: ${GEMINI_TIMEOUT:15s}

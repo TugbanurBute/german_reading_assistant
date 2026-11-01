@@ -9,10 +9,6 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * Starts a tiny Spring context (no web server, no database) to check how configuration binds.
- * The same technique is used later to test TranslationProvider selection.
- */
 class CorsPropertiesTest {
 
     @Configuration(proxyBeanMethods = false)
