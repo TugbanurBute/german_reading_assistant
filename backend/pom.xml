@@ -96,6 +96,11 @@
                 </configuration>
             </plugin>
             <plugin>
+                <!-- Runs *IT classes in `./mvnw verify`; they need the local PostgreSQL. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>

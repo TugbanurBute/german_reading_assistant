@@ -24,7 +24,8 @@ Maven is not required — use the bundled wrapper (`mvnw` / `mvnw.cmd`).
 ```bash
 cd backend
 cp .env.example .env      # then edit DB_PASSWORD etc.
-./mvnw test               # runs without a database or Gemini key
+./mvnw test               # unit tests; no database or Gemini key needed
+./mvnw verify             # + *IT integration tests against the local PostgreSQL (schema it_test, mock provider)
 ./mvnw spring-boot:run    # starts on :8080 with the "local" profile (needs PostgreSQL)
 ```
 

@@ -23,4 +23,9 @@ public record TranslationResponse(
         TargetLanguage targetLanguage,
         TranslationType translationType
 ) {
+
+    public TranslationResponse withOriginalText(String text) {
+        return new TranslationResponse(text, translation, lemma, partOfSpeech, grammar, sentenceTranslation,
+                sourceLanguage, targetLanguage, translationType);
+    }
 }
