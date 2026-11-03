@@ -14,4 +14,4 @@ translation:
 
 logging:
   level:
-    com.example.germanreader: DEBUG
+    com.germanreader: DEBUG

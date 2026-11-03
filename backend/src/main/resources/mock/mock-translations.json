@@ -1,0 +1,228 @@
+[
+  {
+    "sentence": "Die Kinder spielen zwischen den Häusern.",
+    "translations": {
+      "TR": "Çocuklar evlerin arasında oynuyor.",
+      "EN": "The children are playing between the houses."
+    },
+    "words": [
+      {
+        "text": "Kinder", "lemma": "Kind", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "das", "plural": "Kinder", "grammaticalCase": "NOMINATIVE", "number": "PLURAL" },
+        "translations": { "TR": "çocuklar", "EN": "children" }
+      },
+      {
+        "text": "spielen", "lemma": "spielen", "partOfSpeech": "VERB",
+        "grammar": { "kind": "VERB", "tense": "PRESENT", "person": "3rd person plural", "pastParticiple": "gespielt", "auxiliary": "haben", "separablePrefix": null },
+        "translations": { "TR": "oynuyor", "EN": "are playing" }
+      },
+      {
+        "text": "Häusern", "lemma": "Haus", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "das", "plural": "Häuser", "grammaticalCase": "DATIVE", "number": "PLURAL" },
+        "translations": { "TR": "evler", "EN": "houses" }
+      }
+    ]
+  },
+  {
+    "sentence": "Am Morgen sitzt meine Großmutter auf der Bank im Park.",
+    "translations": {
+      "TR": "Sabah büyükannem parktaki bankta oturuyor.",
+      "EN": "In the morning my grandmother sits on the bench in the park."
+    },
+    "words": [
+      {
+        "text": "Morgen", "lemma": "Morgen", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "der", "plural": "Morgen", "grammaticalCase": "DATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "sabah", "EN": "morning" }
+      },
+      {
+        "text": "sitzt", "lemma": "sitzen", "partOfSpeech": "VERB",
+        "grammar": { "kind": "VERB", "tense": "PRESENT", "person": "3rd person singular", "pastParticiple": "gesessen", "auxiliary": "haben", "separablePrefix": null },
+        "translations": { "TR": "oturuyor", "EN": "sits" }
+      },
+      {
+        "text": "Großmutter", "lemma": "Großmutter", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "die", "plural": "Großmütter", "grammaticalCase": "NOMINATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "büyükanne", "EN": "grandmother" }
+      },
+      {
+        "text": "Bank", "lemma": "Bank", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "die", "plural": "Bänke", "grammaticalCase": "DATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "bank (oturak)", "EN": "bench" }
+      }
+    ]
+  },
+  {
+    "sentence": "Danach bringt sie ihr Geld zur Bank.",
+    "translations": {
+      "TR": "Daha sonra parasını bankaya götürüyor.",
+      "EN": "Afterwards she takes her money to the bank."
+    },
+    "words": [
+      {
+        "text": "bringt", "lemma": "bringen", "partOfSpeech": "VERB",
+        "grammar": { "kind": "VERB", "tense": "PRESENT", "person": "3rd person singular", "pastParticiple": "gebracht", "auxiliary": "haben", "separablePrefix": null },
+        "translations": { "TR": "götürüyor", "EN": "takes" }
+      },
+      {
+        "text": "Geld", "lemma": "Geld", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "das", "plural": "Gelder", "grammaticalCase": "ACCUSATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "para", "EN": "money" }
+      },
+      {
+        "text": "Bank", "lemma": "Bank", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "die", "plural": "Banken", "grammaticalCase": "DATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "banka", "EN": "bank" }
+      }
+    ]
+  },
+  {
+    "sentence": "Das alte Schloss steht auf einem hohen Berg.",
+    "translations": {
+      "TR": "Eski şato yüksek bir dağın üzerinde duruyor.",
+      "EN": "The old castle stands on a high mountain."
+    },
+    "words": [
+      {
+        "text": "alte", "lemma": "alt", "partOfSpeech": "ADJECTIVE",
+        "grammar": { "kind": "OTHER", "details": "Declined form of 'alt' (nominative singular neuter, after a definite article)" },
+        "translations": { "TR": "eski", "EN": "old" }
+      },
+      {
+        "text": "Schloss", "lemma": "Schloss", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "das", "plural": "Schlösser", "grammaticalCase": "NOMINATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "şato", "EN": "castle" }
+      },
+      {
+        "text": "hohen", "lemma": "hoch", "partOfSpeech": "ADJECTIVE",
+        "grammar": { "kind": "OTHER", "details": "Declined form of 'hoch' (dative singular masculine); the 'c' drops when the adjective is declined" },
+        "translations": { "TR": "yüksek", "EN": "high" }
+      },
+      {
+        "text": "Berg", "lemma": "Berg", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "der", "plural": "Berge", "grammaticalCase": "DATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "dağ", "EN": "mountain" }
+      }
+    ]
+  },
+  {
+    "sentence": "Leider ist das Schloss an meiner Tür kaputt.",
+    "translations": {
+      "TR": "Ne yazık ki kapımın kilidi bozuk.",
+      "EN": "Unfortunately the lock on my door is broken."
+    },
+    "words": [
+      {
+        "text": "Leider", "lemma": "leider", "partOfSpeech": "ADVERB",
+        "grammar": { "kind": "OTHER", "details": "Sentence adverb expressing regret" },
+        "translations": { "TR": "ne yazık ki", "EN": "unfortunately" }
+      },
+      {
+        "text": "Schloss", "lemma": "Schloss", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "das", "plural": "Schlösser", "grammaticalCase": "NOMINATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "kilit", "EN": "lock" }
+      },
+      {
+        "text": "Tür", "lemma": "Tür", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "die", "plural": "Türen", "grammaticalCase": "DATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "kapı", "EN": "door" }
+      },
+      {
+        "text": "kaputt", "lemma": "kaputt", "partOfSpeech": "ADJECTIVE",
+        "grammar": { "kind": "OTHER", "details": "Used predicatively after 'sein', so it is not declined" },
+        "translations": { "TR": "bozuk", "EN": "broken" }
+      }
+    ]
+  },
+  {
+    "sentence": "Gestern bin ich mit dem Zug nach Berlin gefahren.",
+    "translations": {
+      "TR": "Dün trenle Berlin'e gittim.",
+      "EN": "Yesterday I went to Berlin by train."
+    },
+    "words": [
+      {
+        "text": "Gestern", "lemma": "gestern", "partOfSpeech": "ADVERB",
+        "grammar": { "kind": "OTHER", "details": "Adverb of time" },
+        "translations": { "TR": "dün", "EN": "yesterday" }
+      },
+      {
+        "text": "Zug", "lemma": "Zug", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "der", "plural": "Züge", "grammaticalCase": "DATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "tren", "EN": "train" }
+      },
+      {
+        "text": "gefahren", "lemma": "fahren", "partOfSpeech": "VERB",
+        "grammar": { "kind": "VERB", "tense": "PERFECT", "person": "1st person singular", "pastParticiple": "gefahren", "auxiliary": "sein", "separablePrefix": null },
+        "translations": { "TR": "gittim", "EN": "went" }
+      }
+    ]
+  },
+  {
+    "sentence": "Ich rufe dich morgen an.",
+    "translations": {
+      "TR": "Seni yarın arayacağım.",
+      "EN": "I'll call you tomorrow."
+    },
+    "words": [
+      {
+        "text": "rufe", "lemma": "anrufen", "partOfSpeech": "VERB",
+        "grammar": { "kind": "VERB", "tense": "PRESENT", "person": "1st person singular", "pastParticiple": "angerufen", "auxiliary": "haben", "separablePrefix": "an" },
+        "translations": { "TR": "arayacağım", "EN": "will call" }
+      },
+      {
+        "text": "morgen", "lemma": "morgen", "partOfSpeech": "ADVERB",
+        "grammar": { "kind": "OTHER", "details": "Lowercase 'morgen' means tomorrow; the noun 'der Morgen' means morning" },
+        "translations": { "TR": "yarın", "EN": "tomorrow" }
+      }
+    ]
+  },
+  {
+    "sentence": "Wegen des Regens bleiben wir heute zu Hause.",
+    "translations": {
+      "TR": "Yağmur yüzünden bugün evde kalıyoruz.",
+      "EN": "Because of the rain we are staying at home today."
+    },
+    "words": [
+      {
+        "text": "Wegen", "lemma": "wegen", "partOfSpeech": "PREPOSITION",
+        "grammar": { "kind": "OTHER", "details": "Preposition that takes the genitive (colloquially also the dative)" },
+        "translations": { "TR": "yüzünden", "EN": "because of" }
+      },
+      {
+        "text": "Regens", "lemma": "Regen", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "der", "plural": null, "grammaticalCase": "GENITIVE", "number": "SINGULAR" },
+        "translations": { "TR": "yağmur", "EN": "rain" }
+      },
+      {
+        "text": "bleiben", "lemma": "bleiben", "partOfSpeech": "VERB",
+        "grammar": { "kind": "VERB", "tense": "PRESENT", "person": "1st person plural", "pastParticiple": "geblieben", "auxiliary": "sein", "separablePrefix": null },
+        "translations": { "TR": "kalıyoruz", "EN": "are staying" }
+      }
+    ]
+  },
+  {
+    "sentence": "Er schrieb einen langen Brief an seine Mutter.",
+    "translations": {
+      "TR": "Annesine uzun bir mektup yazdı.",
+      "EN": "He wrote a long letter to his mother."
+    },
+    "words": [
+      {
+        "text": "schrieb", "lemma": "schreiben", "partOfSpeech": "VERB",
+        "grammar": { "kind": "VERB", "tense": "PRETERITE", "person": "3rd person singular", "pastParticiple": "geschrieben", "auxiliary": "haben", "separablePrefix": null },
+        "translations": { "TR": "yazdı", "EN": "wrote" }
+      },
+      {
+        "text": "langen", "lemma": "lang", "partOfSpeech": "ADJECTIVE",
+        "grammar": { "kind": "OTHER", "details": "Declined form of 'lang' (accusative singular masculine, after an indefinite article)" },
+        "translations": { "TR": "uzun", "EN": "long" }
+      },
+      {
+        "text": "Brief", "lemma": "Brief", "partOfSpeech": "NOUN",
+        "grammar": { "kind": "NOUN", "article": "der", "plural": "Briefe", "grammaticalCase": "ACCUSATIVE", "number": "SINGULAR" },
+        "translations": { "TR": "mektup", "EN": "letter" }
+      }
+    ]
+  }
+]
