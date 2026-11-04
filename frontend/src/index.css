@@ -1,3 +1,108 @@
 @import "tailwindcss";
+@import "@fontsource-variable/literata/opsz.css";
+@import "@fontsource-variable/literata/opsz-italic.css";
+@import "@fontsource-variable/inter/index.css";
 
-/* Design tokens (colors, fonts, reading layout) are added after the design proposal is approved. */
+/* Raw palette per theme. data-theme is set on <html> before React renders (see index.html). */
+:root {
+  color-scheme: light;
+  --page: #f5eedf;
+  --sheet: #fbf7ee;
+  --ink: #2b2620;
+  --muted: #6e6357;
+  --line: #e3d8c6;
+  --control: #ede3d0;
+  --accent: #2f5f5b;
+  --highlight: #f3dfa8;
+  --highlight-edge: #c9a44e;
+  --popup: #fffdf8;
+  --shadow: rgb(60 40 10 / 14%);
+  --der: #2e5a86;
+  --der-bg: #e3ecf5;
+  --die: #9a4330;
+  --die-bg: #f6e4de;
+  --das: #46703c;
+  --das-bg: #e5eedd;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #1a1815;
+  --sheet: #221f1b;
+  --ink: #eae2d4;
+  --muted: #a69b8b;
+  --line: #3a342d;
+  --control: #2e2a24;
+  --accent: #86bcb2;
+  --highlight: #5a4a26;
+  --highlight-edge: #9c7f3a;
+  --popup: #2b2722;
+  --shadow: rgb(0 0 0 / 45%);
+  --der: #9dc0e3;
+  --der-bg: #24303b;
+  --die: #e5a593;
+  --die-bg: #3a2721;
+  --das: #a9cc97;
+  --das-bg: #26311f;
+}
+
+/* "inline" makes utilities such as bg-page reference the variables, so they follow the theme. */
+@theme inline {
+  --font-serif: "Literata Variable", Georgia, serif;
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+
+  --color-page: var(--page);
+  --color-sheet: var(--sheet);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-control: var(--control);
+  --color-accent: var(--accent);
+  --color-highlight: var(--highlight);
+  --color-highlight-edge: var(--highlight-edge);
+  --color-popup: var(--popup);
+  --color-der: var(--der);
+  --color-der-bg: var(--der-bg);
+  --color-die: var(--die);
+  --color-die-bg: var(--die-bg);
+  --color-das: var(--das);
+  --color-das-bg: var(--das-bg);
+}
+
+@layer base {
+  body {
+    background-color: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* Popup entrance; skipped for people who asked their system for reduced motion. */
+@keyframes popup-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-popup {
+    animation: popup-in 120ms ease-out;
+  }
+
+  .animate-sheet {
+    animation: sheet-in 180ms ease-out;
+  }
+}

@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>German Reader</title>
+    <title>Lesehilfe</title>
+    <script>
+      // Apply the theme before the first paint, so dark-mode users never see a flash of cream.
+      try {
+        var stored = JSON.parse(localStorage.getItem("lesehilfe.theme"));
+        var dark = stored ? stored === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      } catch (e) {
+        document.documentElement.dataset.theme = "light";
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

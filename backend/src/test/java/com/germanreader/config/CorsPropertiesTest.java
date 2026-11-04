@@ -35,4 +35,20 @@ class CorsPropertiesTest {
     void failsStartupWhenOriginsAreMissing() {
         contextRunner.run(context -> assertThat(context).hasFailed());
     }
+
+    @Test
+    void failsStartupWhenTheEnvironmentVariableWasNotSet() {
+        // What Spring Boot binds when ${CORS_ALLOWED_ORIGINS} cannot be resolved.
+        contextRunner
+                .withPropertyValues("app.cors.allowed-origins=${CORS_ALLOWED_ORIGINS}")
+                .run(context -> assertThat(context).hasFailed()
+                        .getFailure().rootCause().hasMessageContaining("must be an origin"));
+    }
+
+    @Test
+    void failsStartupForAnOriginWithATrailingSlash() {
+        contextRunner
+                .withPropertyValues("app.cors.allowed-origins=http://localhost:5173/")
+                .run(context -> assertThat(context).hasFailed());
+    }
 }
