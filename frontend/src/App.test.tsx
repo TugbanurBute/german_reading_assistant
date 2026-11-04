@@ -207,6 +207,51 @@ describe("reading a sentence", () => {
   });
 });
 
+describe("on a phone", () => {
+  beforeEach(() => {
+    // Narrow screen, no reduced-motion preference.
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query.includes("max-width"),
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("shows the translation in a bottom sheet with a close button", async () => {
+    const user = await startReadingSample();
+
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[0]!);
+    expect(await screen.findByText("bench")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("scrolls a word that the sheet would cover into the space above it", async () => {
+    const user = await startReadingSample();
+    const scrollBy = vi.fn();
+    vi.stubGlobal("scrollBy", scrollBy);
+    // jsdom has no layout: the sheet is 300px tall and the word sits near the bottom of the 768px window.
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(300);
+    const bank = screen.getAllByRole("button", { name: "Bank" })[0]!;
+    vi.spyOn(bank, "getBoundingClientRect").mockReturnValue({ top: 700, bottom: 730, height: 30 } as DOMRect);
+
+    await user.click(bank);
+    await screen.findByText("bench");
+
+    // Visible area above the sheet: 768 - 300 = 468px; the word is centred in it: (468 - 30) / 2 = 219.
+    expect(scrollBy).toHaveBeenCalledWith({ top: 700 - 219, behavior: "smooth" });
+  });
+});
+
 describe("preferences", () => {
   it("remembers the theme", async () => {
     const user = userEvent.setup();

@@ -9,7 +9,7 @@ import {
   shift,
   useFloating,
 } from "@floating-ui/react";
-import { type PointerEvent, type RefObject, useRef } from "react";
+import { type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import type { TranslationRequest } from "../api/types.ts";
 import { useTranslation } from "../hooks/useTranslation.ts";
 import { TranslationCard } from "./TranslationCard.tsx";
@@ -23,12 +23,40 @@ interface Props {
   onClose: () => void;
   onPointerEnter: (event: PointerEvent) => void;
   onPointerLeave: (event: PointerEvent) => void;
+  /** Current height of the bottom sheet in px, 0 when no sheet is shown. */
+  onSheetResize: (height: number) => void;
 }
 
 const SWIPE_CLOSE_PX = 60;
 
-export function TranslationPopup({ anchor, request, asSheet, popupRef, onClose, onPointerEnter, onPointerLeave }: Props) {
+export function TranslationPopup(props: Props) {
+  const { anchor, request, asSheet, popupRef, onClose, onPointerEnter, onPointerLeave, onSheetResize } = props;
   const { state, retry } = useTranslation(request);
+  const visible = !(state.status === "loading" && !state.showSkeleton);
+  // State, not just a ref: FloatingPortal mounts its content a render later, and the effect below
+  // must run again once the sheet element really exists.
+  const [sheet, setSheet] = useState<HTMLDivElement | null>(null);
+  const sheetRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      popupRef.current = element;
+      setSheet(element);
+    },
+    [popupRef],
+  );
+
+  // The sheet grows when the skeleton is replaced by the result, so its height is followed, not measured once.
+  useEffect(() => {
+    if (!sheet) return;
+    const report = () => onSheetResize(sheet.offsetHeight);
+    report();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(report);
+    observer?.observe(sheet);
+    return () => {
+      observer?.disconnect();
+      onSheetResize(0);
+    };
+  }, [sheet, onSheetResize]);
+
   const arrowRef = useRef<SVGSVGElement>(null);
   const touchStartY = useRef<number | null>(null);
   const { refs, floatingStyles, context } = useFloating({
@@ -41,7 +69,7 @@ export function TranslationPopup({ anchor, request, asSheet, popupRef, onClose, 
   });
 
   // Fast answers (e.g. cached) appear directly, without a flash of an empty card.
-  if (state.status === "loading" && !state.showSkeleton) {
+  if (!visible) {
     return null;
   }
 
@@ -52,7 +80,7 @@ export function TranslationPopup({ anchor, request, asSheet, popupRef, onClose, 
     return (
       <FloatingPortal>
         <div
-          ref={popupRef}
+          ref={sheetRef}
           role="dialog"
           aria-label={label}
           className="animate-sheet fixed inset-x-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-2xl border-t border-line bg-popup px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-8px_28px_var(--shadow)]"

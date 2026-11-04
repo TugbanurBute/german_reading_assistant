@@ -6,6 +6,7 @@ import { TranslationPopup } from "./TranslationPopup.tsx";
 
 export const HOVER_DELAY_MS = 500;
 const CLOSE_GRACE_MS = 150;
+const SCROLL_MARGIN_PX = 12;
 
 interface Props {
   document: ReadingDocument;
@@ -34,6 +35,7 @@ export function ReadingView({ document, mode, language }: Props) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [focusIndex, setFocusIndex] = useState(0);
   const asSheet = useMediaQuery("(max-width: 639px)");
+  const [sheetHeight, setSheetHeight] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
@@ -140,6 +142,18 @@ export function ReadingView({ document, mode, language }: Props) {
     };
   }, [selection, focusIndex, mode]);
 
+  // On phones the bottom sheet must not hide what it explains: scroll the word or sentence into the
+  // visible area above the sheet. The spacer below the text makes room to scroll even the last line up.
+  useEffect(() => {
+    if (!selection || sheetHeight === 0) return;
+    const rect = selection.anchor.getBoundingClientRect();
+    const visibleBottom = window.innerHeight - sheetHeight;
+    if (rect.top >= SCROLL_MARGIN_PX && rect.bottom <= visibleBottom - SCROLL_MARGIN_PX) return;
+    const targetTop = Math.max(SCROLL_MARGIN_PX, (visibleBottom - rect.height) / 2);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollBy({ top: rect.top - targetTop, behavior: reduceMotion ? "auto" : "smooth" });
+  }, [selection, sheetHeight]);
+
   const sentenceMode = mode === "SENTENCE";
 
   return (
@@ -200,6 +214,8 @@ export function ReadingView({ document, mode, language }: Props) {
         ))}
       </div>
 
+      {sheetHeight > 0 && <div aria-hidden="true" style={{ height: sheetHeight }} />}
+
       {selection && (
         <TranslationPopup
           anchor={selection.anchor}
@@ -211,6 +227,7 @@ export function ReadingView({ document, mode, language }: Props) {
             if (event.pointerType === "mouse") clearTimeout(closeTimer.current);
           }}
           onPointerLeave={handleHoverEnd}
+          onSheetResize={setSheetHeight}
         />
       )}
     </>

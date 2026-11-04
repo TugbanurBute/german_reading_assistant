@@ -22,14 +22,20 @@ const MODES = [
   { value: "SENTENCE", label: "Sentence" },
 ] as const;
 
-const iconButton = "rounded-lg p-1.5 text-muted hover:bg-control hover:text-ink";
+const iconButton = "rounded-lg p-1 text-muted hover:bg-control hover:text-ink sm:p-1.5";
 
 export function Header({ theme, onThemeChange, language, onLanguageChange, reading }: Props) {
   return (
-    <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3 sm:px-6">
-      <span className="mr-auto font-serif text-[17px] font-medium">Lesehilfe</span>
+    // One row at every width: on phones narrower than 400px the reading toolbar needs the name's space,
+    // so the name is only hidden visually there (screen readers and the browser tab still have it).
+    <header className="flex items-center gap-1.5 border-b border-line px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+      <span className={`mr-auto font-serif text-[17px] font-medium ${reading ? "max-[399px]:sr-only" : ""}`}>
+        Lesehilfe
+      </span>
       {reading && (
-        <SegmentedControl label="Translate" value={reading.mode} options={MODES} onChange={reading.onModeChange} />
+        <div className="max-[399px]:mr-auto">
+          <SegmentedControl label="Translate" value={reading.mode} options={MODES} onChange={reading.onModeChange} />
+        </div>
       )}
       <div data-keep-popup>
         <SegmentedControl label="Translate into" value={language} options={LANGUAGES} onChange={onLanguageChange} />

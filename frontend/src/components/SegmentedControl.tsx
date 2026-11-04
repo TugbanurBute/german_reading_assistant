@@ -17,7 +17,7 @@ export function SegmentedControl<T extends string>({ label, value, options, onCh
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(option.value)}
-            className={`rounded-md px-2.5 py-1 ${selected ? "bg-sheet font-medium" : "text-muted hover:text-ink"}`}
+            className={`rounded-md px-2 py-1 sm:px-2.5 ${selected ? "bg-sheet font-medium" : "text-muted hover:text-ink"}`}
           >
             {option.label}
           </button>
