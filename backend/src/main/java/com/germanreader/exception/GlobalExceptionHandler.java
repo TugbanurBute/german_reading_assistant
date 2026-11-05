@@ -12,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import tools.jackson.databind.exc.InvalidFormatException;
 import tools.jackson.databind.exc.MismatchedInputException;
@@ -53,6 +54,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             log.debug("Translation rejected with {}: {}", code, ex.getMessage());
         }
         return problem(code, null);
+    }
+
+    @ExceptionHandler(DocumentException.class)
+    ResponseEntity<Object> handleDocumentException(DocumentException ex) {
+        // The message holds ids and reasons only, never document text.
+        log.debug("Document request rejected with {}: {}", ex.getErrorCode(), ex.getMessage());
+        return problem(ex.getErrorCode(), null);
+    }
+
+    /** Thrown while the multipart request is parsed, before the controller runs. */
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+
+        return problem(ErrorCode.UPLOAD_TOO_LARGE, null);
     }
 
     @ExceptionHandler(Exception.class)

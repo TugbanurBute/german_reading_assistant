@@ -90,7 +90,30 @@ export function errorCopy(code: ErrorCode): ErrorCopy {
         body: "Check that the backend is running and that CORS_ALLOWED_ORIGINS includes this page's address.",
         canRetry: true,
       };
+    case "DOCUMENT_NOT_FOUND":
+    case "INVALID_UPLOAD":
+    case "UPLOAD_TOO_LARGE": // library codes; the translation endpoint never returns them
     case "INTERNAL_ERROR":
       return { title: "Something went wrong", body: "Try again in a moment.", canRetry: true };
+  }
+}
+
+/** One-line messages for the reading library (saving, uploading, opening, deleting). */
+export function libraryErrorMessage(code: ErrorCode): string {
+  switch (code) {
+    case "NETWORK_ERROR":
+      return "Can't reach the server. Check that the backend is running and that CORS_ALLOWED_ORIGINS includes this page's address.";
+    case "DOCUMENT_NOT_FOUND":
+      return "This text no longer exists. It may have been deleted.";
+    case "INVALID_UPLOAD":
+      return "Only non-empty .txt files saved as UTF-8 can be uploaded.";
+    case "UPLOAD_TOO_LARGE":
+      return "The file is too large. The limit is 512 KB and 100,000 characters.";
+    case "VALIDATION_ERROR":
+    case "MALFORMED_REQUEST":
+    case "REQUEST_ERROR":
+      return "The title and text can't be empty, and the text can have at most 100,000 characters.";
+    default:
+      return "Something went wrong. Try again in a moment.";
   }
 }

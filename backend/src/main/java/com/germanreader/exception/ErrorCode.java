@@ -15,6 +15,10 @@ public enum ErrorCode {
     PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "The translation service is currently unavailable."),
     PROVIDER_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "The translation service took too long to respond."),
 
+    DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "The document does not exist. It may have been deleted."),
+    INVALID_UPLOAD(HttpStatus.BAD_REQUEST, "The file must be a non-empty, UTF-8 encoded .txt text file."),
+    UPLOAD_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "The file is too large. The limit is 512 KB and 100,000 characters."),
+
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.");
 
     private final HttpStatus status;

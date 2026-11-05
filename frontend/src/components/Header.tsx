@@ -8,8 +8,13 @@ interface Props {
   onThemeChange: (theme: Theme) => void;
   language: TargetLanguage;
   onLanguageChange: (language: TargetLanguage) => void;
-  /** Mode switch and edit button only exist while reading. */
-  reading: { mode: TranslationType; onModeChange: (mode: TranslationType) => void; onEdit: () => void } | null;
+  /** Mode switch and back button only exist while reading. */
+  reading: {
+    mode: TranslationType;
+    onModeChange: (mode: TranslationType) => void;
+    /** Saved texts go back to the library, unsaved ones back to editing. */
+    back: { to: "library" | "edit"; onClick: () => void };
+  } | null;
 }
 
 const LANGUAGES = [
@@ -49,8 +54,13 @@ export function Header({ theme, onThemeChange, language, onLanguageChange, readi
         {theme === "dark" ? <SunIcon /> : <MoonIcon />}
       </button>
       {reading && (
-        <button type="button" className={iconButton} aria-label="Edit text" onClick={reading.onEdit}>
-          <PencilIcon />
+        <button
+          type="button"
+          className={iconButton}
+          aria-label={reading.back.to === "library" ? "Back to library" : "Edit text"}
+          onClick={reading.back.onClick}
+        >
+          {reading.back.to === "library" ? <LibraryIcon /> : <PencilIcon />}
         </button>
       )}
     </header>
@@ -82,6 +92,14 @@ function SunIcon() {
     <svg {...iconProps}>
       <circle cx="12" cy="12" r="4" />
       <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </svg>
+  );
+}
+
+function LibraryIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M4 19.5V5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2Zm0 0A2 2 0 0 0 6 21h13M9 7h6" />
     </svg>
   );
 }

@@ -11,6 +11,11 @@ spring:
     open-in-view: false
   flyway:
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      # .txt uploads to the reading library; the service also limits the decoded text to 100,000 characters.
+      max-file-size: 512KB
+      max-request-size: 600KB
 
 server:
   port: ${SERVER_PORT:8080}

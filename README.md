@@ -2,43 +2,241 @@
 
 Read German text and see context-aware Turkish or English translations of words and sentences without leaving the page.
 
-> Status: MVP v0.1 in progress — Phase 1 (project scaffold). A complete setup guide is written in the final phase.
+Paste a German text, then hover over a word (desktop, 500 ms) or tap it (phone) to see:
+
+- its translation **in this context** ("Bank" next to "Park" is a bench, next to "Geld" a bank),
+- the dictionary form, part of speech and grammar (article, case, plural; tense, Perfekt form, separable prefix),
+- the translation of the whole sentence.
+
+Switch to **Sentence** mode to translate whole sentences. Translations are cached in PostgreSQL, so asking twice costs one AI call.
+
+Texts can be saved to a personal **reading library**, by pasting them or uploading a UTF-8 `.txt` file,
+and opened again later.
+
+> Status: MVP v0.1. The frontend is called "Lesehilfe".
+
+> [!WARNING]
+> **Local, single-user use only.** The API has no authentication.
+> - Anyone who can reach the backend can read, add and delete every saved text in the library.
+> - Anyone who can reach it can also spend your Gemini quota.
+>
+> Do not deploy it publicly, or on a shared network, as it is. User accounts and authentication are planned for a later phase.
 
 ## Layout
 
 ```
-backend/   Spring Boot 4.1 (Java 21, Maven Wrapper), PostgreSQL, Flyway
+backend/   Spring Boot 4.1 (Java 21, Maven Wrapper), PostgreSQL + Flyway, Google Gemini
 frontend/  React 19 + TypeScript + Vite 8 + Tailwind CSS 4
 ```
 
 ## Prerequisites
 
-- Java 21
-- Node.js 22.12+ (frontend)
-- PostgreSQL 15+ (needed from Phase 2 onwards to run the backend; not needed for backend tests)
+| Tool        | Version | Needed for                                              |
+|-------------|---------|---------------------------------------------------------|
+| Java        | 21      | backend                                                 |
+| Node.js     | 22.12+  | frontend                                                |
+| PostgreSQL  | 15+     | running the backend and `./mvnw verify` (not for `./mvnw test`) |
+| Gemini key  | –       | only with `TRANSLATION_PROVIDER=gemini`                 |
 
-Maven is not required — use the bundled wrapper (`mvnw` / `mvnw.cmd`).
+Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Windows).
 
-## Backend
+## Quick start (mock mode, no API key)
+
+1. **Database** — create an empty database and user, for example:
+
+   ```sql
+   CREATE USER german_reader WITH PASSWORD 'change-me';
+   CREATE DATABASE german_reader OWNER german_reader;
+   ```
+
+   Flyway creates the table on the first start.
+
+2. **Backend** — on :8080:
+
+   ```bash
+   cd backend
+   cp .env .env          # then set DB_PASSWORD
+   ./mvnw spring-boot:run        # uses the "local" profile (set in pom.xml)
+   ```
+
+3. **Frontend** — on :5173:
+
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+4. Open http://localhost:5173. Click **New text**, then **Load sample text**, then **Save and read**
+   (or **Read without saving**).
+
+The mock provider only knows the words and sentences of the sample text. Any other word answers
+"No sample translation for this". Use the Gemini provider for real text.
+
+## Configuration
+
+The backend reads environment variables. With the `local` profile it also loads `backend/.env`;
+real environment variables win over the file. All variables are listed in
+[backend/.env.example](backend/.env.example).
+
+| Variable               | Required          | Example / default                                | Meaning |
+|------------------------|-------------------|--------------------------------------------------|---------|
+| `DB_URL`               | yes               | `jdbc:postgresql://localhost:5432/german_reader` | JDBC URL |
+| `DB_USERNAME`          | yes               | `german_reader`                                  | |
+| `DB_PASSWORD`          | yes               | –                                                | Never commit it |
+| `CORS_ALLOWED_ORIGINS` | yes               | `http://localhost:5173`                          | Comma-separated frontend origins |
+| `TRANSLATION_PROVIDER` | yes               | `mock` or `gemini`                               | Which provider answers |
+| `GEMINI_API_KEY`       | with `gemini`     | –                                                | From https://aistudio.google.com/apikey |
+| `GEMINI_MODEL`         | with `gemini`     | a current Flash model                            | Must support structured JSON output |
+| `GEMINI_TIMEOUT`       | no                | `15s`                                            | Per-request timeout |
+| `SERVER_PORT`          | no                | `8080`                                           | |
+
+The `local` profile also provides defaults for `DB_URL`, `DB_USERNAME`, `CORS_ALLOWED_ORIGINS`
+(`http://localhost:5173`) and `TRANSLATION_PROVIDER` (`mock`).
+
+The frontend has one optional variable, `VITE_API_BASE_URL` (default `http://localhost:8080`), set in
+`frontend/.env.local` (see [frontend/.env.example](frontend/.env)). Everything prefixed
+with `VITE_` ends up in browser code, so never put secrets there.
+
+### Running from IntelliJ
+
+An IntelliJ run configuration does not read `backend/.env` unless the `local` profile is active.
+Either set **Active profiles** to `local`, or enter the variables above under **Environment variables**.
+
+### Common problem: "Can't reach the server"
+
+If every word shows "Can't reach the server" while the backend is running, the browser is
+probably blocking the request because of CORS (the backend answers `403 Invalid CORS request`).
+
+- Check that `CORS_ALLOWED_ORIGINS` contains the exact address in the browser's address bar:
+  scheme, host and port, with no path and no trailing slash.
+- `localhost` and `127.0.0.1` are different origins.
+- The backend refuses to start when an origin is malformed, or when the variable is missing and
+  Spring is left with the literal placeholder `${CORS_ALLOWED_ORIGINS}`.
+
+### Using Gemini
+
+Set `TRANSLATION_PROVIDER=gemini`, `GEMINI_API_KEY` and `GEMINI_MODEL`, then restart the backend.
+
+- The key stays on the server. It is never logged, never returned to the browser, and the
+  frontend only ever sees short error codes.
+- Mock and Gemini answers are cached separately: the cache namespace is `mock` or
+  `gemini:<model>`. Changing the model or the prompt version starts a fresh namespace.
+- Only successful, validated answers are cached. Errors and timeouts are not.
+
+## Tests
 
 ```bash
 cd backend
-cp .env.example .env      # then edit DB_PASSWORD etc.
-./mvnw test               # unit tests; no database or Gemini key needed
-./mvnw verify             # + *IT integration tests against the local PostgreSQL (schema it_test, mock provider)
-./mvnw spring-boot:run    # starts on :8080 with the "local" profile (needs PostgreSQL)
+./mvnw test       # unit and web-slice tests: no database, no Gemini key
+./mvnw verify     # also runs *IT integration tests against your local PostgreSQL
 ```
 
-Configuration is read from environment variables; with the `local` profile, `backend/.env` is also loaded.
-See [backend/.env.example](backend/.env.example) for every variable.
-
-## Frontend
+`./mvnw verify` uses the `local` profile (so it needs `backend/.env` or the DB variables) and the
+mock provider. It works in its own schema, `it_test`, and never touches your data or calls Gemini.
 
 ```bash
 cd frontend
-npm install
-npm run dev               # http://localhost:5173
-npm test
+npm test          # Vitest + Testing Library (jsdom), no backend needed
+npm run build     # type check + production build
 ```
 
-Optional overrides go in `frontend/.env.local` (see [frontend/.env.example](frontend/.env.example)).
+## API
+
+`POST /api/v1/translations`
+
+```json
+{
+  "selectedText": "Bank",
+  "context": "Am Morgen sitzt meine Großmutter auf der Bank im Park.",
+  "sourceLanguage": "DE",
+  "targetLanguage": "EN",
+  "translationType": "WORD"
+}
+```
+
+- `translationType` is `WORD` or `SENTENCE`; `context` is the surrounding sentence, used only for words.
+- Limits: a word is at most 100 characters, a sentence or context at most 1000.
+- `targetLanguage` is `TR` or `EN`.
+
+A successful answer contains `translation`, `lemma`, `partOfSpeech`, a `grammar` object whose shape
+depends on `grammar.kind` (`NOUN`, `VERB`, `OTHER`), and `sentenceTranslation`.
+
+### Reading library (unauthenticated, see the warning above)
+
+| Method and path | Body | Success |
+|---|---|---|
+| `POST /api/v1/documents` | JSON `{"title": "…", "content": "…"}` | `201` + `Location`, the document |
+| `POST /api/v1/documents/upload` | `multipart/form-data` with a `file` part | `201` + `Location`, the document |
+| `GET /api/v1/documents` | – | `200`, `[{id, title, createdAt, updatedAt}]`, newest first, no content |
+| `GET /api/v1/documents/{id}` | – | `200`, `{id, title, content, createdAt, updatedAt}` |
+| `DELETE /api/v1/documents/{id}` | – | `204` |
+
+Rules:
+- **Title and content:** neither can be blank. The title has at most 200 characters and the content at most 100,000. Line breaks are stored as `\n`, and surrounding whitespace is removed.
+- **Uploads:**
+  - The file name must end in `.txt`, and at most 512 KB is accepted.
+  - The bytes must be valid UTF-8, checked strictly: Windows-1252 or Latin-1 files are rejected rather than garbled. A leading BOM is removed.
+  - Control characters other than tab and line breaks are rejected, since they mean a binary file. The MIME type the browser sends is ignored.
+  - The title is the file name without `.txt`.
+
+Errors are RFC 9457 problem details with a stable `code`:
+
+| Status | `code` |
+|--------|--------|
+| 400 | `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `REQUEST_ERROR` (e.g. an id that is not a UUID), `INVALID_UPLOAD` |
+| 404 | `MOCK_TRANSLATION_NOT_FOUND`, `DOCUMENT_NOT_FOUND` |
+| 413 | `UPLOAD_TOO_LARGE` |
+| 502 | `PROVIDER_INVALID_RESPONSE` |
+| 503 | `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE` |
+| 504 | `PROVIDER_TIMEOUT` |
+| 500 | `INTERNAL_ERROR` |
+
+Internal provider messages never reach the client. Document titles and contents are never logged.
+
+## How it works
+
+```
+Browser ──POST──▶ TranslationController ──▶ TranslationService ──▶ TranslationCacheRepository (PostgreSQL)
+                                                   │
+                                                   └── on a cache miss ──▶ TranslationProvider (mock | Gemini)
+```
+
+### Backend
+
+1. **Controller** — validates the request (`@Valid`) and hands it to the service.
+2. **Service** — builds a SHA-256 cache key from the provider namespace, prompt version, type,
+   languages, normalized text and, for words, the normalized context. It then looks up the key.
+3. **On a miss** — the provider is called with no database transaction open.
+   - Identical requests that arrive at the same time share one provider call (single-flight).
+   - A failure is passed to every waiting request and is not remembered.
+4. **Repository** — stores the answer with `INSERT … ON CONFLICT DO NOTHING`, so two servers racing
+   to insert the same key cannot fail.
+5. **Exception handler** — turns every error into a problem-details response with a stable code.
+
+The reading library follows the same layers: `DocumentController` → `DocumentService` →
+`ReadingDocumentRepository`, with the `reading_document` table (migration `V2`).
+- The service checks uploads.
+- Reads use read-only transactions.
+- Listing selects only the metadata columns, never the content.
+- Deleting is a single `DELETE` statement that reports whether a row existed.
+
+### Frontend
+
+The app opens on the **library**. From there:
+- **New text** opens the paste screen.
+- **Upload .txt** adds a file.
+- A saved text opens in the reader, whose header button leads back to the library.
+
+### Inside the reader
+
+1. **Splitting the text** — `Intl.Segmenter("de")` splits the text into sentences and words.
+   - German abbreviations such as "z. B." and "Dr." don't end a sentence.
+   - Hyphenated compounds stay one word.
+2. **Showing a translation** — a word or sentence opens a popup.
+   - On desktop it is a floating card positioned by Floating UI.
+   - On phones it is a bottom sheet, and the page scrolls the tapped word above it.
+3. **Caching in the browser** — answers are kept for the session, so switching TR ⇄ EN back and forth
+   asks the server only once per language.
+4. **Keyboard** — the text is one tab stop. Use the arrow keys to move between words and Enter to translate.
+5. **Preferences** — theme, language and mode are saved in `localStorage`.

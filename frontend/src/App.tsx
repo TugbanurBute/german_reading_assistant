@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { TargetLanguage, TranslationType } from "./api/types.ts";
 import { Header, type Theme } from "./components/Header.tsx";
+import { LibraryScreen } from "./components/LibraryScreen.tsx";
 import { ReadingView } from "./components/ReadingView.tsx";
 import { WriteScreen } from "./components/WriteScreen.tsx";
 import { usePreference } from "./hooks/usePreference.ts";
@@ -10,6 +11,12 @@ const THEMES = ["light", "dark"] as const;
 const LANGUAGES = ["TR", "EN"] as const;
 const MODES = ["WORD", "SENTENCE"] as const;
 
+/** A saved text has an id and goes back to the library; a text read without saving goes back to editing. */
+type Screen =
+  | { name: "library" }
+  | { name: "write" }
+  | { name: "reading"; text: string; title: string | null; documentId: string | null };
+
 function systemTheme(): Theme {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
@@ -18,13 +25,19 @@ export default function App() {
   const [theme, setTheme] = usePreference<Theme>("theme", THEMES, systemTheme());
   const [language, setLanguage] = usePreference<TargetLanguage>("language", LANGUAGES, "TR");
   const [mode, setMode] = usePreference<TranslationType>("mode", MODES, "WORD");
-  const [text, setText] = useState("");
-  const [reading, setReading] = useState(false);
-  const document = useMemo(() => (reading ? segmentText(text) : null), [reading, text]);
+  const [screen, setScreen] = useState<Screen>({ name: "library" });
+  // The draft survives a look at the reader ("Read without saving", then "Edit text").
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftText, setDraftText] = useState("");
+
+  const readingText = screen.name === "reading" ? screen.text : null;
+  const document = useMemo(() => (readingText === null ? null : segmentText(readingText)), [readingText]);
 
   useEffect(() => {
     window.document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  const toLibrary = () => setScreen({ name: "library" });
 
   return (
     <div className="min-h-dvh">
@@ -33,15 +46,47 @@ export default function App() {
         onThemeChange={setTheme}
         language={language}
         onLanguageChange={setLanguage}
-        reading={document ? { mode, onModeChange: setMode, onEdit: () => setReading(false) } : null}
+        reading={
+          screen.name === "reading"
+            ? {
+                mode,
+                onModeChange: setMode,
+                back: screen.documentId
+                  ? { to: "library", onClick: toLibrary }
+                  : { to: "edit", onClick: () => setScreen({ name: "write" }) },
+              }
+            : null
+        }
       />
       <main className="px-3 py-6 sm:px-6 sm:py-10">
         <div className="mx-auto max-w-[44rem] rounded-xl border border-line bg-sheet px-5 py-6 sm:px-10 sm:py-9">
-          {document ? (
-            // A new key resets the popup and keyboard position when the mode changes.
-            <ReadingView key={mode} document={document} mode={mode} language={language} />
-          ) : (
-            <WriteScreen text={text} onTextChange={setText} onRead={() => setReading(true)} />
+          {screen.name === "library" && (
+            <LibraryScreen
+              onNew={() => setScreen({ name: "write" })}
+              onOpen={(saved) => setScreen({ name: "reading", text: saved.content, title: saved.title, documentId: saved.id })}
+            />
+          )}
+          {screen.name === "write" && (
+            <WriteScreen
+              title={draftTitle}
+              text={draftText}
+              onTitleChange={setDraftTitle}
+              onTextChange={setDraftText}
+              onSaved={(saved) => {
+                setDraftTitle("");
+                setDraftText("");
+                setScreen({ name: "reading", text: saved.content, title: saved.title, documentId: saved.id });
+              }}
+              onReadUnsaved={() => setScreen({ name: "reading", text: draftText, title: null, documentId: null })}
+              onBack={toLibrary}
+            />
+          )}
+          {screen.name === "reading" && document && (
+            <>
+              {screen.title && <h1 className="mb-5 font-serif text-2xl font-medium">{screen.title}</h1>}
+              {/* A new key resets the popup and keyboard position when the mode or the text changes. */}
+              <ReadingView key={`${mode}:${screen.documentId ?? "draft"}`} document={document} mode={mode} language={language} />
+            </>
           )}
         </div>
       </main>
