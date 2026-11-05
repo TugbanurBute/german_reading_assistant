@@ -12,6 +12,8 @@ interface Props {
   document: ReadingDocument;
   mode: TranslationType;
   language: TargetLanguage;
+  /** Set for saved library texts, so saved words can link back to them. */
+  documentId?: string | null;
 }
 
 /** What the popup is showing: a word (WORD mode) or a whole sentence (SENTENCE mode). */
@@ -30,7 +32,7 @@ interface WordRef {
 
 const HIGHLIGHT = "bg-highlight shadow-[inset_0_-2px_0_var(--highlight-edge)]";
 
-export function ReadingView({ document, mode, language }: Props) {
+export function ReadingView({ document, mode, language, documentId = null }: Props) {
   const words = useMemo(() => indexWords(document), [document]);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [focusIndex, setFocusIndex] = useState(0);
@@ -220,6 +222,7 @@ export function ReadingView({ document, mode, language }: Props) {
         <TranslationPopup
           anchor={selection.anchor}
           request={{ ...selection.request, targetLanguage: language }}
+          documentId={documentId}
           asSheet={asSheet}
           popupRef={popupRef}
           onClose={close}

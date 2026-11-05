@@ -1,12 +1,6 @@
 import type { TranslationResponse } from "../api/types.ts";
 import type { TranslationState } from "../hooks/useTranslation.ts";
-import { errorCopy, grammarRows, partOfSpeechLabel } from "./labels.ts";
-
-const ARTICLE_STYLES = {
-  der: "bg-der-bg text-der",
-  die: "bg-die-bg text-die",
-  das: "bg-das-bg text-das",
-} as const;
+import { ARTICLE_STYLES, errorCopy, grammarRows, partOfSpeechLabel } from "./labels.ts";
 
 export function TranslationCard({ state, onRetry }: { state: TranslationState; onRetry: () => void }) {
   return (

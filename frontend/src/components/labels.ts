@@ -19,6 +19,13 @@ const TENSES: Record<Tense, string> = {
   FUTURE_II: "Future II",
 };
 
+/** Colours of the der/die/das badge (translation card and My words). */
+export const ARTICLE_STYLES = {
+  der: "bg-der-bg text-der",
+  die: "bg-die-bg text-die",
+  das: "bg-das-bg text-das",
+} as const;
+
 export function partOfSpeechLabel(partOfSpeech: PartOfSpeech): string {
   return partOfSpeech.charAt(0) + partOfSpeech.slice(1).toLowerCase();
 }
@@ -92,7 +99,8 @@ export function errorCopy(code: ErrorCode): ErrorCopy {
       };
     case "DOCUMENT_NOT_FOUND":
     case "INVALID_UPLOAD":
-    case "UPLOAD_TOO_LARGE": // library codes; the translation endpoint never returns them
+    case "UPLOAD_TOO_LARGE": // library and vocabulary codes; the translation endpoint never returns them
+    case "VOCABULARY_NOT_FOUND":
     case "INTERNAL_ERROR":
       return { title: "Something went wrong", body: "Try again in a moment.", canRetry: true };
   }
@@ -116,4 +124,9 @@ export function libraryErrorMessage(code: ErrorCode): string {
     default:
       return "Something went wrong. Try again in a moment.";
   }
+}
+
+/** One-line messages for My words (loading the list, deleting). */
+export function vocabularyErrorMessage(code: ErrorCode): string {
+  return code === "NETWORK_ERROR" ? libraryErrorMessage(code) : "Something went wrong. Try again in a moment.";
 }

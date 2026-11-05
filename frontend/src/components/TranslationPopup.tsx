@@ -12,11 +12,14 @@ import {
 import { type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import type { TranslationRequest } from "../api/types.ts";
 import { useTranslation } from "../hooks/useTranslation.ts";
+import { SaveWordButton } from "./SaveWordButton.tsx";
 import { TranslationCard } from "./TranslationCard.tsx";
 
 interface Props {
   anchor: HTMLElement;
   request: TranslationRequest;
+  /** The library text being read, linked to saved words; null for unsaved texts. */
+  documentId: string | null;
   /** Bottom sheet instead of a floating card (narrow screens). */
   asSheet: boolean;
   popupRef: RefObject<HTMLDivElement | null>;
@@ -30,7 +33,7 @@ interface Props {
 const SWIPE_CLOSE_PX = 60;
 
 export function TranslationPopup(props: Props) {
-  const { anchor, request, asSheet, popupRef, onClose, onPointerEnter, onPointerLeave, onSheetResize } = props;
+  const { anchor, request, documentId, asSheet, popupRef, onClose, onPointerEnter, onPointerLeave, onSheetResize } = props;
   const { state, retry } = useTranslation(request);
   const visible = !(state.status === "loading" && !state.showSkeleton);
   // State, not just a ref: FloatingPortal mounts its content a render later, and the effect below
@@ -74,7 +77,14 @@ export function TranslationPopup(props: Props) {
   }
 
   const label = `Translation of “${request.selectedText}”`;
-  const card = <TranslationCard state={state} onRetry={retry} />;
+  const card = (
+    <>
+      <TranslationCard state={state} onRetry={retry} />
+      {state.status === "success" && state.data.translationType === "WORD" && (
+        <SaveWordButton data={state.data} sentence={request.context} documentId={documentId} />
+      )}
+    </>
+  );
 
   if (asSheet) {
     return (

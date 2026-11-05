@@ -5,6 +5,7 @@ import App from "./App.tsx";
 import { clearTranslationCache } from "./api/translations.ts";
 import type { SavedDocument } from "./api/documents.ts";
 import type { TranslationRequest } from "./api/types.ts";
+import { type SaveVocabularyInput, type VocabularyEntry, meaningKey } from "./api/vocabulary.ts";
 import { SAMPLE_TEXT } from "./text/sampleText.ts";
 
 const json = (body: unknown, status = 200) =>
@@ -80,6 +81,53 @@ async function fakeLibrary(path: string, init: RequestInit | undefined): Promise
   return json(document);
 }
 
+/** The backend's "My words", in memory: one entry per meaning, like ux_vocabulary_entry_meaning. */
+let vocabulary: VocabularyEntry[] = [];
+
+function fakeVocabulary(path: string, init: RequestInit | undefined): Response {
+  const method = init?.method ?? "GET";
+  if (method === "GET") return json(vocabulary);
+  if (method === "POST") {
+    const input = JSON.parse(init?.body as string) as SaveVocabularyInput;
+    const existing = vocabulary.find((entry) => meaningKey(entry) === meaningKey(input));
+    if (existing) return json(existing);
+    const document = library.find((d) => d.id === input.sourceDocumentId);
+    const entry: VocabularyEntry = {
+      ...input,
+      id: `word-${vocabulary.length + 1}`,
+      lemma: input.lemma ?? input.originalText,
+      sourceDocumentId: document?.id ?? null,
+      sourceDocumentTitle: document?.title ?? null,
+      createdAt: new Date(Date.UTC(2026, 10, 5, 10, vocabulary.length)).toISOString(),
+    };
+    vocabulary.unshift(entry);
+    return json(entry, 201);
+  }
+  const id = path.split("/").pop();
+  if (!vocabulary.some((entry) => entry.id === id)) return json({ code: "VOCABULARY_NOT_FOUND", detail: "Not found." }, 404);
+  vocabulary = vocabulary.filter((entry) => entry.id !== id);
+  return new Response(null, { status: 204 });
+}
+
+function savedWord(overrides: Partial<VocabularyEntry>): VocabularyEntry {
+  const entry: VocabularyEntry = {
+    id: `word-${vocabulary.length + 1}`,
+    originalText: "Bank",
+    lemma: "Bank",
+    article: "die",
+    partOfSpeech: "NOUN",
+    translation: "bench",
+    targetLanguage: "TR",
+    sourceSentence: "Am Morgen sitzt meine Großmutter auf der Bank im Park.",
+    sourceDocumentId: null,
+    sourceDocumentTitle: null,
+    createdAt: "2026-11-05T10:00:00Z",
+    ...overrides,
+  };
+  vocabulary.unshift(entry);
+  return entry;
+}
+
 const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
@@ -87,12 +135,13 @@ beforeEach(() => {
   clearTranslationCache();
   library = [];
   nextId = 1;
+  vocabulary = [];
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (url, init) => {
     const path = new URL(url as string).pathname;
-    return path === "/api/v1/translations"
-      ? fakeBackend(JSON.parse(init?.body as string) as TranslationRequest)
-      : fakeLibrary(path, init);
+    if (path === "/api/v1/translations") return fakeBackend(JSON.parse(init?.body as string) as TranslationRequest);
+    if (path.startsWith("/api/v1/vocabulary")) return fakeVocabulary(path, init);
+    return fakeLibrary(path, init);
   });
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -246,6 +295,171 @@ describe("reading library", () => {
     await user.click(screen.getByRole("button", { name: "Try again" }));
 
     expect(await screen.findByText("Your library is empty")).toBeInTheDocument();
+  });
+});
+
+describe("my words", () => {
+  const vocabularyPosts = () =>
+    fetchMock.mock.calls.filter(([url, init]) => (url as string).endsWith("/api/v1/vocabulary") && init?.method === "POST");
+
+  async function openMyWords() {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "My words" }));
+    return user;
+  }
+
+  it("saves a translated word from a saved text without translating it again", async () => {
+    const document = saveToLibrary("Im Park", SAMPLE_TEXT);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /^Im Park/ }));
+    await user.click((await screen.findAllByRole("button", { name: "Bank" }))[0]!);
+    const popup = await screen.findByRole("dialog", { name: "Translation of “Bank”" });
+
+    await user.click(await within(popup).findByRole("button", { name: "Save to My words" }));
+
+    expect(await within(popup).findByText("Saved to My words")).toBeInTheDocument();
+    expect(within(popup).queryByRole("button", { name: "Save to My words" })).not.toBeInTheDocument();
+    expect(translationCalls()).toHaveLength(1);
+    expect(JSON.parse(vocabularyPosts()[0]![1]?.body as string)).toEqual({
+      originalText: "Bank",
+      lemma: "Bank",
+      article: "die",
+      partOfSpeech: "NOUN",
+      translation: "bench",
+      targetLanguage: "TR",
+      sourceSentence: "Am Morgen sitzt meine Großmutter auf der Bank im Park.",
+      sourceDocumentId: document.id,
+    });
+  });
+
+  it("shows Saved for a meaning that is already saved, and Save for another meaning of the same word", async () => {
+    savedWord({ translation: "bench", targetLanguage: "TR" });
+    const user = await startReadingSample();
+    const [parkBank, moneyBank] = screen.getAllByRole("button", { name: "Bank" });
+
+    await user.click(parkBank!);
+    let popup = await screen.findByRole("dialog", { name: "Translation of “Bank”" });
+    expect(await within(popup).findByText("Saved to My words")).toBeInTheDocument();
+
+    await user.click(moneyBank!);
+    popup = await screen.findByRole("dialog", { name: "Translation of “Bank”" });
+    await within(popup).findByText("bank");
+    await user.click(within(popup).getByRole("button", { name: "Save to My words" }));
+
+    expect(await within(popup).findByText("Saved to My words")).toBeInTheDocument();
+    expect(vocabulary.map((entry) => entry.translation)).toEqual(["bank", "bench"]);
+  });
+
+  it("offers no Save button in sentence mode", async () => {
+    const user = await startReadingSample();
+    await user.click(screen.getByRole("radio", { name: "Sentence" }));
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[0]!);
+
+    await screen.findByText(/sits on the bench|bankaya|Sonra/);
+    expect(screen.queryByRole("button", { name: "Save to My words" })).not.toBeInTheDocument();
+  });
+
+  it("shows an error and keeps the button when saving fails", async () => {
+    const user = await startReadingSample();
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[0]!);
+    const popup = await screen.findByRole("dialog", { name: "Translation of “Bank”" });
+    const save = await within(popup).findByRole("button", { name: "Save to My words" });
+
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await user.click(save);
+
+    expect(await within(popup).findByText("Couldn't save. Try again.")).toBeInTheDocument();
+    await user.click(within(popup).getByRole("button", { name: "Save to My words" }));
+    expect(await within(popup).findByText("Saved to My words")).toBeInTheDocument();
+  });
+
+  it("shows the empty state", async () => {
+    await openMyWords();
+
+    expect(await screen.findByText("No saved words yet")).toBeInTheDocument();
+  });
+
+  it("lists saved words with article, translation, sentence and source text", async () => {
+    savedWord({ sourceDocumentId: "doc-9", sourceDocumentTitle: "Im Park" });
+    savedWord({
+      originalText: "abzuheben",
+      lemma: "abheben",
+      article: null,
+      partOfSpeech: "VERB",
+      translation: "para çekmek",
+      sourceSentence: "Danach geht sie zur Bank, um Geld abzuheben.",
+    });
+    await openMyWords();
+
+    const list = await screen.findByRole("list", { name: "Saved words" });
+    const [verb, noun] = within(list).getAllByRole("listitem");
+    expect(verb).toHaveTextContent("abheben");
+    expect(verb).toHaveTextContent("Verb");
+    expect(verb).toHaveTextContent("para çekmek");
+    expect(within(verb!).queryByText("die")).not.toBeInTheDocument();
+    expect(noun).toHaveTextContent("die");
+    expect(noun).toHaveTextContent("bench");
+    expect(noun).toHaveTextContent("Am Morgen sitzt meine Großmutter auf der Bank im Park.");
+    expect(noun).toHaveTextContent("from “Im Park”");
+  });
+
+  it("deletes a word only after confirmation", async () => {
+    savedWord({ translation: "bench" });
+    savedWord({ translation: "bank", sourceSentence: "Danach geht sie zur Bank, um Geld abzuheben." });
+    const user = await openMyWords();
+
+    await user.click(await screen.findByRole("button", { name: "Delete “Bank” (bank)" }));
+    await user.click(within(screen.getByRole("group", { name: "Delete “Bank” (bank)?" })).getByRole("button", { name: "Cancel" }));
+    expect(vocabulary).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Delete “Bank” (bank)" }));
+    await user.click(within(screen.getByRole("group", { name: "Delete “Bank” (bank)?" })).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("Deleted “Bank”.")).toBeInTheDocument();
+    expect(vocabulary.map((entry) => entry.translation)).toEqual(["bench"]);
+    expect(screen.queryByRole("button", { name: "Delete “Bank” (bank)" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete “Bank” (bench)" })).toBeInTheDocument();
+  });
+
+  it("treats a word deleted elsewhere as deleted", async () => {
+    savedWord({});
+    const user = await openMyWords();
+    await user.click(await screen.findByRole("button", { name: "Delete “Bank” (bench)" }));
+    vocabulary = [];
+
+    await user.click(within(screen.getByRole("group", { name: "Delete “Bank” (bench)?" })).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("Deleted “Bank”.")).toBeInTheDocument();
+    expect(screen.getByText("No saved words yet")).toBeInTheDocument();
+  });
+
+  it("offers a retry when the words can't be loaded", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const myWords = await screen.findByRole("button", { name: "My words" });
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await user.click(myWords);
+    expect(await screen.findByText("Couldn't load your words")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText("No saved words yet")).toBeInTheDocument();
+  });
+
+  it("keeps the list and the reader in step: a word saved while reading appears in My words", async () => {
+    const user = await startReadingSample();
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[0]!);
+    await user.click(await screen.findByRole("button", { name: "Save to My words" }));
+    await screen.findByText("Saved to My words");
+
+    await user.click(screen.getByRole("button", { name: "Edit text" }));
+    await user.click(screen.getByRole("button", { name: "← Library" }));
+    await user.click(await screen.findByRole("button", { name: "My words" }));
+
+    const list = await screen.findByRole("list", { name: "Saved words" });
+    expect(within(list).getByText("bench")).toBeInTheDocument();
   });
 });
 

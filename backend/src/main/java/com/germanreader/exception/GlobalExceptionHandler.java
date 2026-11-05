@@ -63,6 +63,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(ex.getErrorCode(), null);
     }
 
+    @ExceptionHandler(VocabularyException.class)
+    ResponseEntity<Object> handleVocabularyException(VocabularyException ex) {
+        // The message holds ids only, never the saved words or sentences.
+        log.debug("Vocabulary request rejected with {}: {}", ex.getErrorCode(), ex.getMessage());
+        return problem(ex.getErrorCode(), null);
+    }
+
     /** Thrown while the multipart request is parsed, before the controller runs. */
     @Override
     protected ResponseEntity<Object> handleMaxUploadSizeExceededException(

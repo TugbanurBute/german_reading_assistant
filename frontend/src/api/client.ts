@@ -13,6 +13,7 @@ export type ErrorCode =
   | "DOCUMENT_NOT_FOUND"
   | "INVALID_UPLOAD"
   | "UPLOAD_TOO_LARGE"
+  | "VOCABULARY_NOT_FOUND"
   | "INTERNAL_ERROR"
   | "NETWORK_ERROR";
 

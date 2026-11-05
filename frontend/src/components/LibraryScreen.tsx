@@ -13,6 +13,7 @@ import { libraryErrorMessage } from "./labels.ts";
 
 interface Props {
   onNew: () => void;
+  onWords: () => void;
   onOpen: (document: SavedDocument) => void;
 }
 
@@ -32,7 +33,7 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", tim
 
 const secondaryButton = "rounded-lg border border-line px-3.5 py-2 text-sm hover:bg-control";
 
-export function LibraryScreen({ onNew, onOpen }: Props) {
+export function LibraryScreen({ onNew, onWords, onOpen }: Props) {
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -126,6 +127,9 @@ export function LibraryScreen({ onNew, onOpen }: Props) {
           <h1 className="font-serif text-xl font-medium">Your library</h1>
           <p className="mt-1 text-[13px] text-muted">Saved texts, newest first.</p>
         </div>
+        <button type="button" onClick={onWords} className={secondaryButton}>
+          My words
+        </button>
         <label
           className={`${secondaryButton} cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
             uploading ? "pointer-events-none opacity-60" : ""

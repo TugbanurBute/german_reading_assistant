@@ -19,6 +19,8 @@ public enum ErrorCode {
     INVALID_UPLOAD(HttpStatus.BAD_REQUEST, "The file must be a non-empty, UTF-8 encoded .txt text file."),
     UPLOAD_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "The file is too large. The limit is 512 KB and 100,000 characters."),
 
+    VOCABULARY_NOT_FOUND(HttpStatus.NOT_FOUND, "The saved word does not exist. It may have been deleted."),
+
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.");
 
     private final HttpStatus status;

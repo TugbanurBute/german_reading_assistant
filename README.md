@@ -95,7 +95,7 @@ The `local` profile also provides defaults for `DB_URL`, `DB_USERNAME`, `CORS_AL
 (`http://localhost:5173`) and `TRANSLATION_PROVIDER` (`mock`).
 
 The frontend has one optional variable, `VITE_API_BASE_URL` (default `http://localhost:8080`), set in
-`frontend/.env.local` (see [frontend/.env.example](frontend/.env)). Everything prefixed
+`frontend/.env.local` (see [frontend/.env](frontend/.env)). Everything prefixed
 with `VITE_` ends up in browser code, so never put secrets there.
 
 ### Running from IntelliJ
@@ -180,19 +180,51 @@ Rules:
   - Control characters other than tab and line breaks are rejected, since they mean a binary file. The MIME type the browser sends is ignored.
   - The title is the file name without `.txt`.
 
+### My words (unauthenticated, see the warning above)
+
+| Method and path | Body | Success |
+|---|---|---|
+| `POST /api/v1/vocabulary` | JSON, see below | `201` + `Location` for a new entry; `200` with the existing entry when this meaning is already saved |
+| `GET /api/v1/vocabulary` | – | `200`, all entries, newest first, each with `sourceDocumentTitle` |
+| `DELETE /api/v1/vocabulary/{id}` | – | `204` |
+
+```json
+{
+  "originalText": "Bank",
+  "lemma": "Bank",
+  "article": "die",
+  "partOfSpeech": "NOUN",
+  "translation": "bench",
+  "targetLanguage": "EN",
+  "sourceSentence": "Am Morgen sitzt meine Großmutter auf der Bank im Park.",
+  "sourceDocumentId": "…"
+}
+```
+
+Rules:
+- **No new AI call.** The body is a translation the reader already received from `/api/v1/translations`; saving only stores it.
+- **Required fields:** `originalText` (at most 100 characters), `translation` (at most 300) and `targetLanguage`.
+  - `lemma` defaults to the word itself.
+  - `article` (only nouns have one), `partOfSpeech`, `sourceSentence` (at most 1000 characters) and `sourceDocumentId` may be null.
+- **Duplicates:** a meaning is lemma + translation + target language, ignoring case. A unique index enforces this.
+  - "Bank → bench" and "Bank → bank" are two entries.
+  - Saving "Bank → bench" again, from any sentence, returns the existing entry unchanged.
+- **Deleted texts:** deleting a library text keeps its words; their `sourceDocumentId` and `sourceDocumentTitle` become null. A word saved with the id of a text that no longer exists is stored without the link.
+
 Errors are RFC 9457 problem details with a stable `code`:
 
 | Status | `code` |
 |--------|--------|
 | 400 | `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `REQUEST_ERROR` (e.g. an id that is not a UUID), `INVALID_UPLOAD` |
-| 404 | `MOCK_TRANSLATION_NOT_FOUND`, `DOCUMENT_NOT_FOUND` |
+| 404 | `MOCK_TRANSLATION_NOT_FOUND`, `DOCUMENT_NOT_FOUND`, `VOCABULARY_NOT_FOUND` |
 | 413 | `UPLOAD_TOO_LARGE` |
 | 502 | `PROVIDER_INVALID_RESPONSE` |
 | 503 | `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE` |
 | 504 | `PROVIDER_TIMEOUT` |
 | 500 | `INTERNAL_ERROR` |
 
-Internal provider messages never reach the client. Document titles and contents are never logged.
+Internal provider messages never reach the client. Document titles and contents, and saved words and
+sentences, are never logged.
 
 ## How it works
 
@@ -221,12 +253,21 @@ The reading library follows the same layers: `DocumentController` → `DocumentS
 - Listing selects only the metadata columns, never the content.
 - Deleting is a single `DELETE` statement that reports whether a row existed.
 
+"My words" works the same way: `VocabularyController` → `VocabularyService` → `VocabularyEntryRepository`, with the
+`vocabulary_entry` table (migration `V3`).
+- The unique index `ux_vocabulary_entry_meaning` on `(lower(lemma), target_language, lower(translation))` stops duplicates.
+- Saving looks up the meaning first. If two saves of the same meaning race, the loser's INSERT fails on the
+  index and it returns the winner's entry.
+- `source_document_id` is a foreign key with `ON DELETE SET NULL`, so deleting a text keeps its words.
+
 ### Frontend
 
 The app opens on the **library**. From there:
 - **New text** opens the paste screen.
 - **Upload .txt** adds a file.
 - A saved text opens in the reader, whose header button leads back to the library.
+- **My words** lists saved words. In the reader, a word translation has a **Save to My words** button,
+  which shows "Saved" for meanings already in the list.
 
 ### Inside the reader
 
