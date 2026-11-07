@@ -27,6 +27,8 @@ import com.germanreader.exception.TranslationException;
 import com.germanreader.service.TranslationService;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpHeaders;
@@ -210,6 +212,21 @@ class TranslationControllerTest {
                     .andExpect(jsonPath("$.code").value("PROVIDER_TIMEOUT"))
                     .andExpect(jsonPath("$.detail").value(ErrorCode.PROVIDER_TIMEOUT.message()))
                     .andExpect(content().string(not(containsString("Gemini"))));
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = ErrorCode.class,
+                names = {"PROVIDER_MODEL_UNAVAILABLE", "PROVIDER_REJECTED"})
+        void configurationProblemsAre503WithTheirOwnCodeAndNoProviderDetails(ErrorCode code) throws Exception {
+            given(translationService.translate(any())).willThrow(new TranslationException(
+                    code, "Gemini answered HTTP 404 NOT_FOUND", new IllegalStateException("models/x is no longer available")));
+
+            postJson(VALID)
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value(code.name()))
+                    .andExpect(jsonPath("$.detail").value(code.message()))
+                    .andExpect(content().string(not(containsString("Gemini"))))
+                    .andExpect(content().string(not(containsString("no longer available"))));
         }
 
         @Test

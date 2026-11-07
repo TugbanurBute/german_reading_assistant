@@ -33,3 +33,5 @@ translation:
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:}
     timeout: ${GEMINI_TIMEOUT:15s}
+    # true: ask Google once at startup whether GEMINI_MODEL exists (logged, never stops the app)
+    verify-model: ${GEMINI_VERIFY_MODEL:false}

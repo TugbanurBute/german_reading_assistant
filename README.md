@@ -89,6 +89,7 @@ real environment variables win over the file. All variables are listed in
 | `GEMINI_API_KEY`       | with `gemini`     | –                                                | From https://aistudio.google.com/apikey |
 | `GEMINI_MODEL`         | with `gemini`     | a current Flash model                            | Must support structured JSON output |
 | `GEMINI_TIMEOUT`       | no                | `15s`                                            | Per-request timeout |
+| `GEMINI_VERIFY_MODEL`  | no                | `false`                                          | `true`: check once at startup that `GEMINI_MODEL` exists (one call to Google; result is logged, never stops the app) |
 | `SERVER_PORT`          | no                | `8080`                                           | |
 
 The `local` profile also provides defaults for `DB_URL`, `DB_USERNAME`, `CORS_ALLOWED_ORIGINS`
@@ -123,6 +124,27 @@ Set `TRANSLATION_PROVIDER=gemini`, `GEMINI_API_KEY` and `GEMINI_MODEL`, then res
 - Mock and Gemini answers are cached separately: the cache namespace is `mock` or
   `gemini:<model>`. Changing the model or the prompt version starts a fresh namespace.
 - Only successful, validated answers are cached. Errors and timeouts are not.
+- **Startup checks:** the backend refuses to start without a key or with a malformed model name. Spaces or
+  quotes pasted around the key or model are removed. Whether the model still exists is only checked
+  with `GEMINI_VERIFY_MODEL=true`.
+
+**Retries:** at most one retry per translation, done by the backend (the SDK's own retry is off).
+
+| Gemini answer | Retried? | Code the frontend sees |
+|---|---|---|
+| 500, 502, 503 | once, after 250–500 ms (exponential backoff with jitter) | `PROVIDER_UNAVAILABLE` |
+| 504 | once | `PROVIDER_TIMEOUT` |
+| Network error (connection refused or reset, DNS) | once | `PROVIDER_UNAVAILABLE` |
+| Our own timeout (`GEMINI_TIMEOUT`) | no: the time budget is already used | `PROVIDER_TIMEOUT` |
+| 429 with "retry in N s", N ≤ 3 | once, after N s | `PROVIDER_RATE_LIMITED` |
+| 429 with a longer wait (a quota) | no | `PROVIDER_RATE_LIMITED` |
+| 429 without a wait | once, with the normal backoff | `PROVIDER_RATE_LIMITED` |
+| 404 (model unknown or retired) | no | `PROVIDER_MODEL_UNAVAILABLE` |
+| 400, 401, 403 (e.g. invalid key) | no | `PROVIDER_REJECTED` |
+
+The last two are settings problems, so the popup names the variable to fix and offers no "Try again".
+The server log has the HTTP status for each failure. Google's message stays in the stack trace and is
+never sent to the browser.
 
 ## Tests
 
@@ -219,7 +241,7 @@ Errors are RFC 9457 problem details with a stable `code`:
 | 404 | `MOCK_TRANSLATION_NOT_FOUND`, `DOCUMENT_NOT_FOUND`, `VOCABULARY_NOT_FOUND` |
 | 413 | `UPLOAD_TOO_LARGE` |
 | 502 | `PROVIDER_INVALID_RESPONSE` |
-| 503 | `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE` |
+| 503 | `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_MODEL_UNAVAILABLE`, `PROVIDER_REJECTED` |
 | 504 | `PROVIDER_TIMEOUT` |
 | 500 | `INTERNAL_ERROR` |
 

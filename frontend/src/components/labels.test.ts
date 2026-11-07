@@ -61,4 +61,12 @@ describe("labels", () => {
     expect(errorCopy("MOCK_TRANSLATION_NOT_FOUND").canRetry).toBe(false);
     expect(errorCopy("VALIDATION_ERROR").canRetry).toBe(false);
   });
+
+  it("tells a retired model and a rejected key apart from an outage, without a retry", () => {
+    expect(errorCopy("PROVIDER_UNAVAILABLE")).toMatchObject({ title: "Translation service unavailable", canRetry: true });
+    expect(errorCopy("PROVIDER_MODEL_UNAVAILABLE")).toMatchObject({ title: "Translation model not available", canRetry: false });
+    expect(errorCopy("PROVIDER_MODEL_UNAVAILABLE").body).toContain("GEMINI_MODEL");
+    expect(errorCopy("PROVIDER_REJECTED")).toMatchObject({ canRetry: false });
+    expect(errorCopy("PROVIDER_REJECTED").body).toContain("GEMINI_API_KEY");
+  });
 });

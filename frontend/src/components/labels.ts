@@ -80,6 +80,19 @@ export function errorCopy(code: ErrorCode): ErrorCopy {
       return { title: "Too many requests right now", body: "Wait a moment, then try again.", canRetry: true };
     case "PROVIDER_UNAVAILABLE":
       return { title: "Translation service unavailable", body: "It may be a short outage. Try again soon.", canRetry: true };
+    // Settings problems: "Try again" would only fail the same way, so there is no retry button.
+    case "PROVIDER_MODEL_UNAVAILABLE":
+      return {
+        title: "Translation model not available",
+        body: "The configured Gemini model may have been retired. Set GEMINI_MODEL to a current model and restart the backend.",
+        canRetry: false,
+      };
+    case "PROVIDER_REJECTED":
+      return {
+        title: "Translation service refused the request",
+        body: "Check GEMINI_API_KEY and the other Gemini settings, then restart the backend.",
+        canRetry: false,
+      };
     case "PROVIDER_INVALID_RESPONSE":
       return { title: "Couldn't read the translation", body: "The service sent an unusable answer.", canRetry: true };
     case "VALIDATION_ERROR":

@@ -8,6 +8,7 @@ import com.germanreader.service.translation.gemini.GeminiTranslationProvider;
 import com.germanreader.service.translation.mock.MockTranslationProvider;
 import com.google.genai.Client;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -85,6 +86,58 @@ class TranslationProviderConfigTest {
                         "translation.gemini.api-key=super-secret", "translation.gemini.model=test-model")
                 .run(context -> assertThat(context.getBean(GeminiProperties.class).toString())
                         .doesNotContain("super-secret"));
+    }
+
+    @Test
+    void geminiModeFailsAtStartupForAMalformedModelName() {
+        contextRunner
+                .withPropertyValues("translation.provider=gemini",
+                        "translation.gemini.api-key=test-key", "translation.gemini.model=gemini 3.5 flash")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure()).rootCause().hasMessageContaining("model");
+                });
+    }
+
+    @Test
+    void geminiModeAllowsAtMostOneRetry() {
+        contextRunner
+                .withPropertyValues("translation.provider=gemini", "translation.gemini.api-key=test-key",
+                        "translation.gemini.model=test-model", "translation.gemini.max-attempts=3")
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void pastedSpacesAndQuotesAroundTheKeyAndModelAreRemoved() {
+        contextRunner
+                .withPropertyValues("translation.provider=gemini",
+                        "translation.gemini.api-key= \"test-key\" ", "translation.gemini.model='models/test-model'")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    GeminiProperties properties = context.getBean(GeminiProperties.class);
+                    assertThat(properties.apiKey()).isEqualTo("test-key");
+                    assertThat(properties.model()).isEqualTo("models/test-model");
+                });
+    }
+
+    @Test
+    void theRemoteModelCheckIsOffByDefault() {
+        contextRunner
+                .withPropertyValues("translation.provider=gemini",
+                        "translation.gemini.api-key=test-key", "translation.gemini.model=test-model")
+                .run(context -> {
+                    assertThat(context.getBean(GeminiProperties.class).verifyModel()).isFalse();
+                    assertThat(context).doesNotHaveBean(ApplicationRunner.class);
+                });
+    }
+
+    @Test
+    void theRemoteModelCheckCanBeSwitchedOn() {
+        // The context runner never starts ApplicationRunners, so this makes no call to Google.
+        contextRunner
+                .withPropertyValues("translation.provider=gemini", "translation.gemini.api-key=test-key",
+                        "translation.gemini.model=test-model", "translation.gemini.verify-model=true")
+                .run(context -> assertThat(context).hasSingleBean(ApplicationRunner.class));
     }
 
     @Test

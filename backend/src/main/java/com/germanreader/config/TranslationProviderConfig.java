@@ -1,12 +1,15 @@
 package com.germanreader.config;
 
 import com.germanreader.service.translation.TranslationProvider;
+import com.germanreader.service.translation.gemini.GeminiModelCheck;
 import com.germanreader.service.translation.gemini.GeminiProperties;
 import com.germanreader.service.translation.gemini.GeminiTranslationProvider;
 import com.germanreader.service.translation.mock.MockTranslationProvider;
 import com.google.genai.Client;
 import com.google.genai.types.HttpOptions;
 import com.google.genai.types.HttpRetryOptions;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -34,10 +37,9 @@ public class TranslationProviderConfig {
 
         @Bean(destroyMethod = "close")
         Client geminiClient(GeminiProperties properties) {
-            HttpRetryOptions retries = HttpRetryOptions.builder()
-                    .attempts(properties.maxAttempts())
-                    .httpStatusCodes(500, 502, 503, 504)
-                    .build();
+            // GeminiTranslationProvider retries itself (network errors and 429 hints too); the SDK must not
+            // retry as well, or one failure could cost up to four calls.
+            HttpRetryOptions retries = HttpRetryOptions.builder().attempts(1).build();
             HttpOptions httpOptions = HttpOptions.builder()
                     .timeout((int) properties.timeout().toMillis())
                     .retryOptions(retries)
@@ -51,7 +53,14 @@ public class TranslationProviderConfig {
         @Bean
         TranslationProvider geminiTranslationProvider(Client geminiClient, GeminiProperties properties,
                                                       JsonMapper jsonMapper) {
-            return new GeminiTranslationProvider(geminiClient.models, properties.model(), jsonMapper);
+            return new GeminiTranslationProvider(geminiClient.models, properties.model(), jsonMapper,
+                    properties.maxAttempts());
+        }
+
+        @Bean
+        @ConditionalOnBooleanProperty("translation.gemini.verify-model")
+        ApplicationRunner geminiModelCheck(Client geminiClient, GeminiProperties properties) {
+            return args -> GeminiModelCheck.verify(geminiClient.models, properties.model());
         }
     }
 }

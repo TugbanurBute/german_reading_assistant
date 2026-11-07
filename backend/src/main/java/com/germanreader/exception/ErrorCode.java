@@ -14,6 +14,11 @@ public enum ErrorCode {
     PROVIDER_RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE, "The translation service is busy. Please try again in a moment."),
     PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "The translation service is currently unavailable."),
     PROVIDER_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "The translation service took too long to respond."),
+    // Configuration problems: retrying does not help until the server's settings change.
+    PROVIDER_MODEL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE,
+            "The configured translation model is not available. It may have been retired."),
+    PROVIDER_REJECTED(HttpStatus.SERVICE_UNAVAILABLE,
+            "The translation service rejected the request. The server's translation settings need to be checked."),
 
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "The document does not exist. It may have been deleted."),
     INVALID_UPLOAD(HttpStatus.BAD_REQUEST, "The file must be a non-empty, UTF-8 encoded .txt text file."),
