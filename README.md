@@ -192,6 +192,7 @@ depends on `grammar.kind` (`NOUN`, `VERB`, `OTHER`), and `sentenceTranslation`.
 | `POST /api/v1/documents/upload` | `multipart/form-data` with a `file` part | `201` + `Location`, the document |
 | `GET /api/v1/documents` | – | `200`, `[{id, title, createdAt, updatedAt}]`, newest first, no content |
 | `GET /api/v1/documents/{id}` | – | `200`, `{id, title, content, createdAt, updatedAt}` |
+| `PATCH /api/v1/documents/{id}` | JSON `{"title": "…"}` | `200`, `{id, title, createdAt, updatedAt}`: renames only, the content never changes |
 | `DELETE /api/v1/documents/{id}` | – | `204` |
 
 Rules:
@@ -274,6 +275,7 @@ The reading library follows the same layers: `DocumentController` → `DocumentS
 - Reads use read-only transactions.
 - Listing selects only the metadata columns, never the content.
 - Deleting is a single `DELETE` statement that reports whether a row existed.
+- Renaming is a single `UPDATE` of `title` and `updated_at` that never reads the content. The id stays the same, so saved words keep their link.
 
 "My words" works the same way: `VocabularyController` → `VocabularyService` → `VocabularyEntryRepository`, with the
 `vocabulary_entry` table (migration `V3`).
@@ -288,6 +290,7 @@ The app opens on the **library**. From there:
 - **New text** opens the paste screen.
 - **Upload .txt** adds a file.
 - A saved text opens in the reader, whose header button leads back to the library.
+- The pencil icon renames a text (Enter saves, Escape cancels).
 - **My words** lists saved words. In the reader, a word translation has a **Save to My words** button,
   which shows "Saved" for meanings already in the list.
 
@@ -303,3 +306,16 @@ The app opens on the **library**. From there:
    asks the server only once per language.
 4. **Keyboard** — the text is one tab stop. Use the arrow keys to move between words and Enter to translate.
 5. **Preferences** — theme, language and mode are saved in `localStorage`.
+6. **Pages** — texts longer than about 4,000 characters are shown page by page (`paginate.ts`), so the
+   browser never renders thousands of word buttons at once.
+   - Pages break between paragraphs; a paragraph longer than a page is split between sentences.
+   - Words and sentences are never split, so translation context is unchanged.
+   - **Previous**, **Next** and a page menu sit below the text. Changing pages moves to the top of the
+     new page and focuses its "Page X of N" label.
+7. **Reading position** — for saved texts, the first visible sentence is stored in `localStorage`
+   (`lesehilfe.position.<documentId>`), at most every 500 ms while scrolling.
+   - The anchor is the sentence's number plus the start of its text, not a pixel offset, so it survives
+     other screen and font sizes.
+   - Reopening the text shows that page and scrolls the sentence into view. An entry that no longer
+     matches the text is removed, and reading starts at the top.
+   - The position is kept per browser, not on the server. Deleting a text removes its position.

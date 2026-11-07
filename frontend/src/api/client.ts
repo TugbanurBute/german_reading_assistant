@@ -33,7 +33,7 @@ export class ApiError extends Error {
 type Body = object | FormData;
 
 /** Calls the backend. Resolves with the parsed JSON (undefined for 204), rejects with an ApiError. */
-export async function apiRequest<T>(method: "GET" | "POST" | "DELETE", path: string, body?: Body): Promise<T> {
+export async function apiRequest<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: Body): Promise<T> {
   const init: RequestInit = { method };
   if (body instanceof FormData) {
     init.body = body;

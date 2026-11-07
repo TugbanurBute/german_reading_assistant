@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -193,6 +194,68 @@ class DocumentControllerTest {
         mockMvc.perform(post(URL + "/upload").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnsupportedMediaType());
         verifyNoInteractions(documentService);
+    }
+
+    private ResultActions patchJson(String body) throws Exception {
+        return mockMvc.perform(patch(URL + "/" + ID).contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    @Test
+    void renameReturnsTheUpdatedSummaryWithoutContent() throws Exception {
+        Instant renamed = CREATED.plusSeconds(60);
+        given(documentService.rename(ID, "Im Garten")).willReturn(new DocumentSummary(ID, "Im Garten", CREATED, renamed));
+
+        patchJson("{\"title\": \"Im Garten\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ID.toString()))
+                .andExpect(jsonPath("$.title").value("Im Garten"))
+                .andExpect(jsonPath("$.updatedAt").value(renamed.toString()))
+                .andExpect(jsonPath("$.content").doesNotExist());
+    }
+
+    @Test
+    void renameRejectsABlankOrMissingTitle() throws Exception {
+        patchJson("{\"title\": \"   \"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.errors[0].field").value("title"));
+        patchJson("{}").andExpect(status().isBadRequest());
+        verifyNoInteractions(documentService);
+    }
+
+    @Test
+    void renameRejectsATooLongTitle() throws Exception {
+        patchJson("{\"title\": \"" + "a".repeat(DocumentLimits.MAX_TITLE_LENGTH + 1) + "\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        verifyNoInteractions(documentService);
+    }
+
+    @Test
+    void renamingAMissingDocumentReturns404() throws Exception {
+        given(documentService.rename(any(), any()))
+                .willThrow(new DocumentException(ErrorCode.DOCUMENT_NOT_FOUND, "No document"));
+
+        patchJson("{\"title\": \"Neu\"}")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
+    }
+
+    @Test
+    void renameWithANonUuidIdIsARequestError() throws Exception {
+        mockMvc.perform(patch(URL + "/not-a-uuid").contentType(MediaType.APPLICATION_JSON).content("{\"title\": \"Neu\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("REQUEST_ERROR"));
+    }
+
+    @Test
+    void corsAllowsPatchFromTheFrontend() throws Exception {
+        mockMvc.perform(options(URL + "/" + ID)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5173")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "PATCH")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Content-Type"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:5173"));
     }
 
     @Test

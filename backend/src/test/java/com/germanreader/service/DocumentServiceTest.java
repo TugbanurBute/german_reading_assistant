@@ -3,6 +3,7 @@ package com.germanreader.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -10,6 +11,8 @@ import static org.mockito.Mockito.verify;
 
 import com.germanreader.dto.document.DocumentLimits;
 import com.germanreader.dto.document.DocumentResponse;
+import com.germanreader.dto.document.DocumentSummary;
+import java.time.Instant;
 import com.germanreader.entity.ReadingDocument;
 import com.germanreader.exception.DocumentException;
 import com.germanreader.exception.ErrorCode;
@@ -82,6 +85,33 @@ class DocumentServiceTest {
         assertThatThrownBy(() -> service.delete(id))
                 .isInstanceOfSatisfying(DocumentException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
+    }
+
+    @Test
+    void renameStripsTheTitleAndSetsANewUpdatedAt() {
+        UUID id = UUID.randomUUID();
+        Instant before = Instant.now().minusSeconds(1);
+        given(repository.rename(eq(id), any(), any())).willReturn(1);
+        DocumentSummary summary = new DocumentSummary(id, "Im Garten", before, Instant.now());
+        given(repository.findSummaryById(id)).willReturn(Optional.of(summary));
+
+        assertThat(service.rename(id, "  Im Garten  ")).isEqualTo(summary);
+
+        ArgumentCaptor<Instant> updatedAt = ArgumentCaptor.forClass(Instant.class);
+        verify(repository).rename(eq(id), eq("Im Garten"), updatedAt.capture());
+        assertThat(updatedAt.getValue()).isAfter(before);
+        assertThat(updatedAt.getValue().getNano() % 1000).isZero(); // microseconds, as PostgreSQL stores them
+    }
+
+    @Test
+    void renameThrowsNotFoundWhenNothingWasUpdated() {
+        UUID id = UUID.randomUUID();
+        given(repository.rename(eq(id), any(), any())).willReturn(0);
+
+        assertThatThrownBy(() -> service.rename(id, "Neu"))
+                .isInstanceOfSatisfying(DocumentException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
+        verify(repository, never()).findSummaryById(any());
     }
 
     @Nested

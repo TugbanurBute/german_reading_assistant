@@ -12,6 +12,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -74,6 +76,21 @@ public class DocumentService {
         return repository.findById(id)
                 .map(DocumentResponse::from)
                 .orElseThrow(() -> notFound(id));
+    }
+
+    /**
+     * Changes the title only. The id stays the same, so saved words keep their link to the text.
+     * Returns the summary: the client already has the content and nothing in it changed.
+     */
+    @Transactional
+    public DocumentSummary rename(UUID id, String title) {
+        // PostgreSQL stores microseconds; truncating keeps the returned value equal to the stored one.
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        if (repository.rename(id, title.strip(), now) == 0) {
+            throw notFound(id);
+        }
+        log.debug("Renamed document {}", id);
+        return repository.findSummaryById(id).orElseThrow(() -> notFound(id));
     }
 
     @Transactional

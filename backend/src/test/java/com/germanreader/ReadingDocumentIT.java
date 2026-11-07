@@ -4,13 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.germanreader.dto.TargetLanguage;
 import com.germanreader.dto.document.DocumentLimits;
 import com.germanreader.entity.ReadingDocument;
+import com.germanreader.entity.VocabularyEntry;
 import com.germanreader.repository.ReadingDocumentRepository;
+import com.germanreader.repository.VocabularyEntryRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
@@ -46,10 +50,14 @@ class ReadingDocumentIT {
     private ReadingDocumentRepository repository;
 
     @Autowired
+    private VocabularyEntryRepository vocabularyRepository;
+
+    @Autowired
     private JsonMapper jsonMapper;
 
     @BeforeEach
     void emptyLibrary() {
+        vocabularyRepository.deleteAllInBatch();
         repository.deleteAllInBatch();
     }
 
@@ -112,6 +120,51 @@ class ReadingDocumentIT {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
         mockMvc.perform(get(URL + "/" + id))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
+    }
+
+    @Test
+    void renameChangesOnlyTheTitleAndUpdatedAt() throws Exception {
+        UUID id = createDocument("Im Park", TEXT);
+        ReadingDocument before = repository.findById(id).orElseThrow();
+        VocabularyEntry word = vocabularyRepository.saveAndFlush(new VocabularyEntry(
+                "Bank", "Bank", null, null, "bench", TargetLanguage.EN, null, id));
+
+        mockMvc.perform(patch(URL + "/" + id).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\": \"  Großmutters Bank  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.title").value("Großmutters Bank"))
+                .andExpect(jsonPath("$.content").doesNotExist());
+
+        ReadingDocument after = repository.findById(id).orElseThrow();
+        assertThat(after.getTitle()).isEqualTo("Großmutters Bank");
+        assertThat(after.getContent()).isEqualTo(TEXT);
+        assertThat(after.getCreatedAt()).isEqualTo(before.getCreatedAt());
+        assertThat(after.getUpdatedAt()).isAfter(before.getUpdatedAt());
+        // Same id, so saved words still point to the text and show its new title.
+        assertThat(vocabularyRepository.findById(word.getId()).orElseThrow().getSourceDocumentId()).isEqualTo(id);
+        mockMvc.perform(get("/api/v1/vocabulary"))
+                .andExpect(jsonPath("$[0].sourceDocumentTitle").value("Großmutters Bank"));
+        mockMvc.perform(get(URL + "/" + id))
+                .andExpect(jsonPath("$.updatedAt").value(after.getUpdatedAt().toString()));
+    }
+
+    @Test
+    void renamingIsValidatedAndMissingDocumentsAreNotFound() throws Exception {
+        UUID id = createDocument("Im Park", TEXT);
+
+        mockMvc.perform(patch(URL + "/" + id).contentType(MediaType.APPLICATION_JSON).content("{\"title\": \" \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mockMvc.perform(patch(URL + "/" + id).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\": \"" + "a".repeat(DocumentLimits.MAX_TITLE_LENGTH + 1) + "\"}"))
+                .andExpect(status().isBadRequest());
+        assertThat(repository.findById(id).orElseThrow().getTitle()).isEqualTo("Im Park");
+
+        mockMvc.perform(patch(URL + "/" + UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\": \"Neu\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
     }

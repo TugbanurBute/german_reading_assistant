@@ -6,7 +6,9 @@ import { clearTranslationCache } from "./api/translations.ts";
 import type { SavedDocument } from "./api/documents.ts";
 import type { TranslationRequest } from "./api/types.ts";
 import { type SaveVocabularyInput, type VocabularyEntry, meaningKey } from "./api/vocabulary.ts";
+import { paginate } from "./text/paginate.ts";
 import { SAMPLE_TEXT } from "./text/sampleText.ts";
+import { segmentText } from "./text/segment.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -77,6 +79,13 @@ async function fakeLibrary(path: string, init: RequestInit | undefined): Promise
   if (method === "DELETE") {
     library = library.filter((d) => d !== document);
     return new Response(null, { status: 204 });
+  }
+  if (method === "PATCH") {
+    const { title } = JSON.parse(init?.body as string) as { title: string };
+    document.title = title.trim();
+    document.updatedAt = new Date(Date.UTC(2026, 10, 7, 12)).toISOString();
+    const { content: _content, ...summary } = document;
+    return json(summary);
   }
   return json(document);
 }
@@ -647,5 +656,193 @@ describe("preferences", () => {
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem("lesehilfe.theme")).toBe('"dark"');
+  });
+});
+
+describe("renaming a text", () => {
+  const patchCalls = () => fetchMock.mock.calls.filter(([, init]) => init?.method === "PATCH");
+
+  async function startRenaming(title: string) {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: `Rename “${title}”` }));
+    return { user, form: screen.getByRole("form", { name: `Rename “${title}”` }) };
+  }
+
+  it("renames a text without touching its content", async () => {
+    const saved = saveToLibrary("Im Park", SAMPLE_TEXT);
+    const { user, form } = await startRenaming("Im Park");
+    const input = within(form).getByRole("textbox", { name: "New title" });
+    expect(input).toHaveValue("Im Park");
+
+    await user.clear(input);
+    await user.type(input, "  Großmutters Bank  ");
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Renamed to “Großmutters Bank”.")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Saved texts" })).getByText("Großmutters Bank")).toBeInTheDocument();
+    expect(patchCalls()).toHaveLength(1);
+    expect(patchCalls()[0]![0]).toMatch(new RegExp(`/api/v1/documents/${saved.id}$`));
+    expect(JSON.parse(patchCalls()[0]![1]?.body as string)).toEqual({ title: "Großmutters Bank" });
+    expect(library[0]).toMatchObject({ id: saved.id, content: SAMPLE_TEXT });
+  });
+
+  it("rejects an empty title without a request, and Escape cancels", async () => {
+    saveToLibrary("Im Park", SAMPLE_TEXT);
+    const { user, form } = await startRenaming("Im Park");
+
+    await user.clear(within(form).getByRole("textbox", { name: "New title" }));
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    expect(within(form).getByRole("alert")).toHaveTextContent("The title can't be empty.");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Im Park/ })).toBeInTheDocument();
+    expect(patchCalls()).toHaveLength(0);
+  });
+
+  it("removes a text that was deleted elsewhere", async () => {
+    saveToLibrary("Verschwunden", "Text.");
+    const { user, form } = await startRenaming("Verschwunden");
+    library = [];
+
+    await user.type(within(form).getByRole("textbox", { name: "New title" }), " neu");
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(/This text no longer exists/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Verschwunden/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("long texts", () => {
+  /** The sample text 40 times: about 17,000 characters, several pages. */
+  const LONG_TEXT = Array.from({ length: 40 }, () => SAMPLE_TEXT).join("\n\n");
+  const pages = paginate(segmentText(LONG_TEXT));
+  const positionKey = (id: string) => `lesehilfe.position.${id}`;
+  const firstWordOf = (page: number) =>
+    pages[page]!.paragraphs[0]!.sentences[0]!.tokens.find((token) => token.wordIndex !== null)!.wordIndex!;
+
+  async function openLongText() {
+    const saved = saveToLibrary("Lang", LONG_TEXT);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /^Lang/ }));
+    await screen.findByText(`Page 1 of ${pages.length}`);
+    return { user, saved };
+  }
+
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("shows one page at a time instead of every word", async () => {
+    await openLongText();
+
+    expect(pages.length).toBeGreaterThan(3);
+    const wordButtons = document.querySelectorAll("[data-word]");
+    expect(wordButtons.length).toBe(pages[0]!.wordCount);
+    expect(wordButtons.length).toBeLessThan(segmentText(LONG_TEXT).wordCount / 3);
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+  });
+
+  it("moves between pages with the buttons and the page menu, focusing the new page", async () => {
+    const { user } = await openLongText();
+    const nav = screen.getByRole("navigation", { name: "Pages" });
+
+    await user.click(within(nav).getByRole("button", { name: "Next page" }));
+    expect(screen.getByText(`Page 2 of ${pages.length}`)).toHaveFocus();
+    expect(document.querySelector(`[data-word="${firstWordOf(1)}"]`)).not.toBeNull();
+    expect(document.querySelector('[data-word="0"]')).toBeNull();
+
+    await user.selectOptions(within(nav).getByRole("combobox", { name: "Go to page" }), String(pages.length - 1));
+    expect(screen.getByText(`Page ${pages.length} of ${pages.length}`)).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Next page" })).toBeDisabled();
+  });
+
+  it("translates and saves words on a later page with their own sentence as context", async () => {
+    const { user, saved } = await openLongText();
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[1]!);
+    const popup = await screen.findByRole("dialog", { name: "Translation of “Bank”" });
+    expect(within(popup).getByText("bank")).toBeInTheDocument();
+    expect(sentRequests().at(-1)).toMatchObject({ context: "Danach bringt sie ihr Geld zur Bank." });
+
+    await user.click(within(popup).getByRole("button", { name: "Save to My words" }));
+    expect(await within(popup).findByText("Saved to My words")).toBeInTheDocument();
+    expect(vocabulary[0]).toMatchObject({ translation: "bank", sourceDocumentId: saved.id });
+  });
+
+  it("keeps arrow-key navigation on the current page", async () => {
+    const { user } = await openLongText();
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    const first = firstWordOf(1);
+    const firstWord = document.querySelector<HTMLElement>(`[data-word="${first}"]`)!;
+
+    firstWord.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(firstWord).toHaveFocus();
+    await user.keyboard("{ArrowRight}");
+    expect(document.querySelector(`[data-word="${first + 1}"]`)).toHaveFocus();
+  });
+
+  it("reopens a text on the page and sentence where the reader stopped", async () => {
+    const target = pages[2]!.paragraphs[1]!.sentences[1]!;
+    const saved = saveToLibrary("Lang", LONG_TEXT);
+    localStorage.setItem(positionKey(saved.id), JSON.stringify({ v: 1, sentence: target.id, snippet: target.text.slice(0, 32) }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /^Lang/ }));
+
+    expect(await screen.findByText(`Page 3 of ${pages.length}`)).toBeInTheDocument();
+    const sentence = document.querySelector(`[data-sentence="${target.id}"]`);
+    expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts).toContain(sentence);
+  });
+
+  it("starts at the top when the saved position is outdated", async () => {
+    const saved = saveToLibrary("Lang", LONG_TEXT);
+    localStorage.setItem(positionKey(saved.id), JSON.stringify({ v: 1, sentence: 30, snippet: "Ein Satz, den es nicht gibt." }));
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /^Lang/ }));
+
+    expect(await screen.findByText(`Page 1 of ${pages.length}`)).toBeInTheDocument();
+    expect(localStorage.getItem(positionKey(saved.id)) ?? "").not.toContain("Ein Satz");
+  });
+
+  it("remembers the first visible sentence while scrolling, without writing on every scroll event", async () => {
+    const { user, saved } = await openLongText();
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    const visible = pages[1]!.paragraphs[2]!.sentences[0]!;
+    await new Promise((resolve) => setTimeout(resolve, 600)); // let the save for the page change pass
+    // Now the reader scrolls: sentences before `visible` are above the window.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const id = Number(this.dataset.sentence ?? Number.NaN);
+      const bottom = id < visible.id ? -10 : 100;
+      return { bottom, top: bottom - 20, left: 0, right: 0, width: 0, height: 20, x: 0, y: 0, toJSON: () => ({}) };
+    });
+    const stored = () => JSON.parse(localStorage.getItem(positionKey(saved.id)) ?? "null") as { sentence: number } | null;
+    expect(stored()?.sentence).not.toBe(visible.id);
+
+    for (let i = 0; i < 20; i++) fireEvent.scroll(window);
+
+    // Throttled: nothing is written while the scroll events arrive, one write follows after the interval.
+    expect(stored()?.sentence).not.toBe(visible.id);
+    await vi.waitFor(() => expect(stored()).toMatchObject({ sentence: visible.id }), { timeout: 2000 });
+  });
+
+  it("does not remember positions for texts read without saving", async () => {
+    const user = await openWriteScreen();
+    await user.type(screen.getByRole("textbox", { name: "What would you like to read?" }), "Kurzer Text.");
+    await user.click(screen.getByRole("button", { name: "Read without saving" }));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(Object.keys(localStorage).filter((key) => key.startsWith("lesehilfe.position."))).toEqual([]);
   });
 });

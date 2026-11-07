@@ -3,6 +3,7 @@ package com.germanreader.controller;
 import com.germanreader.dto.document.CreateDocumentRequest;
 import com.germanreader.dto.document.DocumentResponse;
 import com.germanreader.dto.document.DocumentSummary;
+import com.germanreader.dto.document.RenameDocumentRequest;
 import com.germanreader.service.DocumentService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -12,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -49,6 +51,11 @@ public class DocumentController {
     @GetMapping("/{id}")
     public DocumentResponse get(@PathVariable UUID id) {
         return documentService.get(id);
+    }
+
+    @PatchMapping(path = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public DocumentSummary rename(@PathVariable UUID id, @Valid @RequestBody RenameDocumentRequest request) {
+        return documentService.rename(id, request.title());
     }
 
     @DeleteMapping("/{id}")

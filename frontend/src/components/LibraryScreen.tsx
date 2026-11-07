@@ -1,14 +1,17 @@
-import { type ChangeEvent, useEffect, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useId, useState } from "react";
 import { ApiError, type ErrorCode } from "../api/client.ts";
 import {
   type DocumentSummary,
+  MAX_TITLE_LENGTH,
   MAX_UPLOAD_BYTES,
   type SavedDocument,
   deleteDocument,
   getDocument,
   listDocuments,
+  renameDocument,
   uploadDocument,
 } from "../api/documents.ts";
+import { forgetPosition } from "../text/readingPosition.ts";
 import { libraryErrorMessage } from "./labels.ts";
 
 interface Props {
@@ -21,6 +24,11 @@ type ListState =
   | { status: "loading" }
   | { status: "error"; code: ErrorCode }
   | { status: "ready"; documents: DocumentSummary[] };
+
+interface Busy {
+  id: string;
+  action: "opening" | "deleting" | "renaming";
+}
 
 interface Notice {
   kind: "success" | "error";
@@ -38,9 +46,10 @@ export function LibraryScreen({ onNew, onWords, onOpen }: Props) {
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [uploading, setUploading] = useState(false);
-  // Only one row is busy or asking for confirmation at a time.
-  const [busy, setBusy] = useState<{ id: string; action: "opening" | "deleting" } | null>(null);
+  // Only one row is busy, asking for confirmation or being renamed at a time.
+  const [busy, setBusy] = useState<Busy | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -98,18 +107,45 @@ export function LibraryScreen({ onNew, onWords, onOpen }: Props) {
     }
   }
 
+  async function handleRename(summary: DocumentSummary, title: string) {
+    setBusy({ id: summary.id, action: "renaming" });
+    setNotice(null);
+    try {
+      const renamed = await renameDocument(summary.id, title);
+      setList((state) =>
+        state.status === "ready"
+          ? { ...state, documents: state.documents.map((d) => (d.id === renamed.id ? renamed : d)) }
+          : state,
+      );
+      setRenamingId(null);
+      setNotice({ kind: "success", text: `Renamed to “${renamed.title}”.` });
+    } catch (error) {
+      const code = codeOf(error);
+      if (code === "DOCUMENT_NOT_FOUND") {
+        removeFromList(summary.id);
+        setRenamingId(null);
+      }
+      // Other errors keep the form open with the typed title, so it can be saved again.
+      setNotice({ kind: "error", text: libraryErrorMessage(code) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleDelete(summary: DocumentSummary) {
     setConfirmingId(null);
     setBusy({ id: summary.id, action: "deleting" });
     setNotice(null);
     try {
       await deleteDocument(summary.id);
+      forgetPosition(summary.id);
       removeFromList(summary.id);
       setNotice({ kind: "success", text: `Deleted “${summary.title}”.` });
     } catch (error) {
       const code = codeOf(error);
       if (code === "DOCUMENT_NOT_FOUND") {
         // Already gone: the goal is reached.
+        forgetPosition(summary.id);
         removeFromList(summary.id);
         setNotice({ kind: "success", text: `Deleted “${summary.title}”.` });
       } else {
@@ -177,8 +213,18 @@ export function LibraryScreen({ onNew, onWords, onOpen }: Props) {
                 busy={busy?.id === summary.id ? busy.action : null}
                 disabled={busy !== null}
                 confirming={confirmingId === summary.id}
+                renaming={renamingId === summary.id}
                 onOpen={() => handleOpen(summary)}
-                onAskDelete={() => setConfirmingId(summary.id)}
+                onStartRename={() => {
+                  setConfirmingId(null);
+                  setRenamingId(summary.id);
+                }}
+                onCancelRename={() => setRenamingId(null)}
+                onRename={(title) => handleRename(summary, title)}
+                onAskDelete={() => {
+                  setRenamingId(null);
+                  setConfirmingId(summary.id);
+                }}
                 onCancelDelete={() => setConfirmingId(null)}
                 onDelete={() => handleDelete(summary)}
               />
@@ -192,17 +238,27 @@ export function LibraryScreen({ onNew, onWords, onOpen }: Props) {
 
 interface RowProps {
   summary: DocumentSummary;
-  busy: "opening" | "deleting" | null;
+  busy: Busy["action"] | null;
   disabled: boolean;
   confirming: boolean;
+  renaming: boolean;
   onOpen: () => void;
   onAskDelete: () => void;
   onCancelDelete: () => void;
   onDelete: () => void;
+  onStartRename: () => void;
+  onCancelRename: () => void;
+  onRename: (title: string) => void;
 }
 
-function DocumentRow({ summary, busy, disabled, confirming, onOpen, onAskDelete, onCancelDelete, onDelete }: RowProps) {
-  const status = busy === "opening" ? " · Opening…" : busy === "deleting" ? " · Deleting…" : "";
+const STATUS: Record<Busy["action"], string> = { opening: " · Opening…", deleting: " · Deleting…", renaming: " · Saving…" };
+
+function DocumentRow(props: RowProps) {
+  const { summary, busy, disabled, confirming, renaming, onOpen, onAskDelete, onCancelDelete, onDelete } = props;
+  if (renaming) {
+    return <RenameForm summary={summary} saving={busy === "renaming"} onCancel={props.onCancelRename} onSave={props.onRename} />;
+  }
+  const status = busy ? STATUS[busy] : "";
   return (
     <li className="flex items-center gap-2 border-b border-line py-2">
       <button
@@ -229,17 +285,110 @@ function DocumentRow({ summary, busy, disabled, confirming, onOpen, onAskDelete,
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={onAskDelete}
-          disabled={disabled}
-          aria-label={`Delete “${summary.title}”`}
-          className="shrink-0 rounded-lg p-2 text-muted hover:bg-control hover:text-die disabled:opacity-50"
-        >
-          <TrashIcon />
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={props.onStartRename}
+            disabled={disabled}
+            aria-label={`Rename “${summary.title}”`}
+            className="shrink-0 rounded-lg p-2 text-muted hover:bg-control hover:text-ink disabled:opacity-50"
+          >
+            <PencilIcon />
+          </button>
+          <button
+            type="button"
+            onClick={onAskDelete}
+            disabled={disabled}
+            aria-label={`Delete “${summary.title}”`}
+            className="shrink-0 rounded-lg p-2 text-muted hover:bg-control hover:text-die disabled:opacity-50"
+          >
+            <TrashIcon />
+          </button>
+        </>
       )}
     </li>
+  );
+}
+
+interface RenameFormProps {
+  summary: DocumentSummary;
+  saving: boolean;
+  onCancel: () => void;
+  onSave: (title: string) => void;
+}
+
+function RenameForm({ summary, saving, onCancel, onSave }: RenameFormProps) {
+  const [title, setTitle] = useState(summary.title);
+  const [error, setError] = useState<string | null>(null);
+  const inputId = useId();
+  const errorId = useId();
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = title.trim();
+    if (!trimmed) {
+      setError("The title can't be empty.");
+      return;
+    }
+    if (trimmed === summary.title) {
+      onCancel(); // nothing changed: no request
+      return;
+    }
+    onSave(trimmed);
+  }
+
+  return (
+    <li className="border-b border-line py-2">
+      <form
+        aria-label={`Rename “${summary.title}”`}
+        onSubmit={handleSubmit}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onCancel();
+        }}
+        className="flex flex-wrap items-center gap-2 px-2 py-1"
+        noValidate
+      >
+        <label htmlFor={inputId} className="sr-only">
+          New title
+        </label>
+        <input
+          id={inputId}
+          value={title}
+          autoFocus
+          onFocus={(event) => event.currentTarget.select()}
+          maxLength={MAX_TITLE_LENGTH}
+          disabled={saving}
+          aria-invalid={error !== null}
+          aria-describedby={error ? errorId : undefined}
+          onChange={(event) => {
+            setTitle(event.target.value);
+            setError(null);
+          }}
+          className="min-w-0 flex-1 basis-48 rounded-lg border border-line bg-page/40 px-3 py-1.5 font-serif text-lg focus:border-accent"
+        />
+        <div className="flex items-center gap-1.5 text-sm">
+          <button type="button" onClick={onCancel} disabled={saving} className="rounded-lg px-2.5 py-1.5 hover:bg-control">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="rounded-lg bg-accent px-2.5 py-1.5 font-medium text-sheet hover:opacity-90 disabled:opacity-60">
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+        {error && (
+          <p id={errorId} role="alert" className="w-full text-[13px] text-die">
+            {error}
+          </p>
+        )}
+      </form>
+    </li>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+    </svg>
   );
 }
 

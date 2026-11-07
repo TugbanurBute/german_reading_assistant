@@ -3,7 +3,7 @@ import type { TargetLanguage, TranslationType } from "./api/types.ts";
 import { Header, type Theme } from "./components/Header.tsx";
 import { LibraryScreen } from "./components/LibraryScreen.tsx";
 import { MyWordsScreen } from "./components/MyWordsScreen.tsx";
-import { ReadingView } from "./components/ReadingView.tsx";
+import { Reader } from "./components/Reader.tsx";
 import { WriteScreen } from "./components/WriteScreen.tsx";
 import { usePreference } from "./hooks/usePreference.ts";
 import { VocabularyContext, useVocabularyStore } from "./hooks/useVocabulary.ts";
@@ -92,9 +92,9 @@ export default function App() {
             {screen.name === "reading" && document && (
               <>
                 {screen.title && <h1 className="mb-5 font-serif text-2xl font-medium">{screen.title}</h1>}
-                {/* A new key resets the popup and keyboard position when the mode or the text changes. */}
-                <ReadingView
-                  key={`${mode}:${screen.documentId ?? "draft"}`}
+                {/* A new key starts a new reading (first page, fresh position) for every text opened. */}
+                <Reader
+                  key={screen.documentId ?? `draft:${screen.text}`}
                   document={document}
                   mode={mode}
                   language={language}

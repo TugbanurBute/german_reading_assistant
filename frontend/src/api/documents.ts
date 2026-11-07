@@ -49,3 +49,8 @@ export function titleFromText(text: string, maxLength = 60): string {
   const lastSpace = cut.lastIndexOf(" ");
   return `${(lastSpace > maxLength / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
+
+/** Changes the title only; resolves with the updated summary (PATCH returns no content). */
+export function renameDocument(id: string, title: string): Promise<DocumentSummary> {
+  return apiRequest("PATCH", `${BASE}/${encodeURIComponent(id)}`, { title });
+}

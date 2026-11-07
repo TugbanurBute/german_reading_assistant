@@ -35,7 +35,10 @@ const HIGHLIGHT = "bg-highlight shadow-[inset_0_-2px_0_var(--highlight-edge)]";
 export function ReadingView({ document, mode, language, documentId = null }: Props) {
   const words = useMemo(() => indexWords(document), [document]);
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [focusIndex, setFocusIndex] = useState(0);
+  // Word indexes run across the whole document; a page holds a contiguous range of them.
+  const firstWord = words.keys().next().value ?? 0;
+  const lastWord = firstWord + Math.max(words.size - 1, 0);
+  const [focusIndex, setFocusIndex] = useState(firstWord);
   const asSheet = useMediaQuery("(max-width: 639px)");
   const [sheetHeight, setSheetHeight] = useState(0);
 
@@ -106,13 +109,13 @@ export function ReadingView({ document, mode, language, documentId = null }: Pro
       ArrowDown: focusIndex + 1,
       ArrowLeft: focusIndex - 1,
       ArrowUp: focusIndex - 1,
-      Home: 0,
-      End: words.size - 1,
+      Home: firstWord,
+      End: lastWord,
     };
     const target = moves[event.key];
     if (target === undefined) return;
     event.preventDefault();
-    const index = Math.min(Math.max(target, 0), words.size - 1);
+    const index = Math.min(Math.max(target, firstWord), lastWord);
     setFocusIndex(index);
     containerRef.current?.querySelector<HTMLElement>(`[data-word="${index}"]`)?.focus();
   }
