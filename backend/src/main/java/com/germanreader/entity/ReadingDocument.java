@@ -2,6 +2,8 @@ package com.germanreader.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -40,11 +42,27 @@ public class ReadingDocument {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private ProcessingStatus processingStatus = ProcessingStatus.PENDING;
+
+    @Column(nullable = false)
+    private int processingVersion = 1;
+
+    private Instant processingQueuedAt;
+
+    private Instant processedAt;
+
+    private Integer wordCount;
+
+    private Integer characterCount;
+
+    private Integer paragraphCount;
+
     public ReadingDocument(UUID ownerId, String title, String content) {
         this.ownerId = ownerId;
         this.title = title;
         this.content = content;
-        // PostgreSQL stores microseconds; truncating keeps the returned value equal to the stored one.
         this.createdAt = now();
         this.updatedAt = this.createdAt;
     }

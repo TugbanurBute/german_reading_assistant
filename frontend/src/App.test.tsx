@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.tsx";
 import { clearTranslationCache } from "./api/translations.ts";
 import type { SavedDocument } from "./api/documents.ts";
+import { PROCESSING_POLL_MS } from "./components/LibraryScreen.tsx";
 import type { TranslationRequest } from "./api/types.ts";
 import { type SaveVocabularyInput, type VocabularyEntry, meaningKey } from "./api/vocabulary.ts";
 import { paginate } from "./text/paginate.ts";
@@ -49,9 +50,20 @@ function fakeBackend(request: TranslationRequest): Response {
 let library: SavedDocument[] = [];
 let nextId = 1;
 
-function saveToLibrary(title: string, content: string): SavedDocument {
+/** Saved documents are already analysed unless a test asks for `analysing`, like a backend whose queue is fast. */
+function saveToLibrary(title: string, content: string, analysing = false): SavedDocument {
   const now = new Date(Date.UTC(2026, 10, 4, 10, nextId)).toISOString();
-  const document = { id: `doc-${nextId++}`, title, content, createdAt: now, updatedAt: now };
+  const document: SavedDocument = {
+    id: `doc-${nextId++}`,
+    title,
+    content,
+    createdAt: now,
+    updatedAt: now,
+    processingStatus: analysing ? "PENDING" : "COMPLETED",
+    wordCount: analysing ? null : content.split(/\s+/).filter(Boolean).length,
+    characterCount: analysing ? null : content.length,
+    paragraphCount: analysing ? null : content.split(/\n\s*\n/).filter((p) => p.trim()).length,
+  };
   library.unshift(document);
   return document;
 }
@@ -695,6 +707,44 @@ describe("preferences", () => {
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem("lesehilfe.theme")).toBe('"dark"');
+  });
+});
+
+describe("document analysis", () => {
+  it("shows the counts of analysed texts", async () => {
+    saveToLibrary("Kurz", "Eins zwei drei.\n\nVier fünf.");
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: /^Kurz/ })).toHaveTextContent("· 5 words · 2 paragraphs");
+  });
+
+  it("marks texts still being analysed and shows their counts once done, without blocking reading", async () => {
+    const pending = saveToLibrary("Neu", SAMPLE_TEXT, true);
+    const user = userEvent.setup();
+    render(<App />);
+    const row = await screen.findByRole("button", { name: /^Neu/ });
+    expect(row).toHaveTextContent("Analysing…");
+
+    // The backend finishes in the background; the library refreshes on its own.
+    Object.assign(pending, { processingStatus: "COMPLETED", wordCount: 63, characterCount: 410, paragraphCount: 3 });
+    expect(await screen.findByText(/63 words · 3 paragraphs/, {}, { timeout: PROCESSING_POLL_MS + 2000 })).toBeInTheDocument();
+    expect(screen.queryByText(/Analysing/)).not.toBeInTheDocument();
+
+    // A pending text opens and translates like any other.
+    pending.processingStatus = "PENDING";
+    await user.click(screen.getByRole("button", { name: /^Neu/ }));
+    await user.click((await screen.findAllByRole("button", { name: "Bank" }))[0]!);
+    expect(await screen.findByText("bench")).toBeInTheDocument();
+  });
+
+  it("shows nothing extra when the analysis failed", async () => {
+    const failed = saveToLibrary("Kaputt", "Text.", true);
+    failed.processingStatus = "FAILED";
+    render(<App />);
+
+    const row = await screen.findByRole("button", { name: /^Kaputt/ });
+    expect(row).not.toHaveTextContent("Analysing");
+    expect(row).not.toHaveTextContent("words");
   });
 });
 

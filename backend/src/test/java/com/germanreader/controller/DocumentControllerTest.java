@@ -19,6 +19,7 @@ import com.germanreader.dto.document.DocumentLimits;
 import com.germanreader.dto.document.DocumentResponse;
 import com.germanreader.dto.document.DocumentSummary;
 import com.germanreader.exception.DocumentException;
+import com.germanreader.entity.ProcessingStatus;
 import com.germanreader.exception.ErrorCode;
 import com.germanreader.service.DocumentService;
 import java.time.Instant;
@@ -46,7 +47,8 @@ class DocumentControllerTest {
     private static final UUID ID = UUID.fromString("0b6f1c1e-3c55-4c43-9a43-6f1f3c1b2a10");
     private static final Instant CREATED = Instant.parse("2026-11-04T10:15:30Z");
     private static final DocumentResponse DOCUMENT =
-            new DocumentResponse(ID, "Im Park", "Am Morgen sitzt meine Großmutter auf der Bank.", CREATED, CREATED);
+            new DocumentResponse(ID, "Im Park", "Am Morgen sitzt meine Großmutter auf der Bank.", CREATED, CREATED,
+                    ProcessingStatus.PENDING, null, null, null);
 
     @Autowired
     private MockMvc mockMvc;
@@ -114,13 +116,17 @@ class DocumentControllerTest {
 
     @Test
     void listReturnsMetadataWithoutContent() throws Exception {
-        given(documentService.list(TestAuth.USER_ID)).willReturn(List.of(new DocumentSummary(ID, "Im Park", CREATED, CREATED)));
+        given(documentService.list(TestAuth.USER_ID)).willReturn(List.of(new DocumentSummary(ID, "Im Park", CREATED, CREATED,
+                ProcessingStatus.COMPLETED, 9, 47, 1)));
 
         mockMvc.perform(get(URL))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(ID.toString()))
                 .andExpect(jsonPath("$[0].title").value("Im Park"))
-                .andExpect(jsonPath("$[0].content").doesNotExist());
+                .andExpect(jsonPath("$[0].content").doesNotExist())
+                .andExpect(jsonPath("$[0].processingStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$[0].wordCount").value(9))
+                .andExpect(jsonPath("$[0].paragraphCount").value(1));
     }
 
     @Test
@@ -206,7 +212,8 @@ class DocumentControllerTest {
     @Test
     void renameReturnsTheUpdatedSummaryWithoutContent() throws Exception {
         Instant renamed = CREATED.plusSeconds(60);
-        given(documentService.rename(ID, TestAuth.USER_ID, "Im Garten")).willReturn(new DocumentSummary(ID, "Im Garten", CREATED, renamed));
+        given(documentService.rename(ID, TestAuth.USER_ID, "Im Garten")).willReturn(new DocumentSummary(ID, "Im Garten", CREATED, renamed,
+                ProcessingStatus.PENDING, null, null, null));
 
         patchJson("{\"title\": \"Im Garten\"}")
                 .andExpect(status().isOk())

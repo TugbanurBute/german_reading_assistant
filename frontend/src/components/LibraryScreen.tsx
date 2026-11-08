@@ -41,7 +41,25 @@ const codeOf = (error: unknown): ErrorCode => (error instanceof ApiError ? error
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-const secondaryButton = "rounded-lg border border-line px-3.5 py-2 text-sm hover:bg-control";
+/** How often, and how many times, the list is refreshed while texts are being analysed. */
+export const PROCESSING_POLL_MS = 3000;
+const MAX_PROCESSING_POLLS = 20;
+
+const numberFormat = new Intl.NumberFormat("en");
+
+const isAnalysing = (summary: DocumentSummary) =>
+  summary.processingStatus === "PENDING" || summary.processingStatus === "PROCESSING";
+
+/** " · 1,234 words · 5 paragraphs" once analysed, " · Analysing…" before; nothing if the analysis failed. */
+function processingText(summary: DocumentSummary): string {
+  if (isAnalysing(summary)) return " · Analysing…";
+  if (summary.processingStatus !== "COMPLETED" || summary.wordCount === null) return "";
+  const words = `${numberFormat.format(summary.wordCount)} ${summary.wordCount === 1 ? "word" : "words"}`;
+  const paragraphs = `${summary.paragraphCount} ${summary.paragraphCount === 1 ? "paragraph" : "paragraphs"}`;
+  return ` · ${words} · ${paragraphs}`;
+}
+
+const secondaryButton ="rounded-lg border border-line px-3.5 py-2 text-sm hover:bg-control";
 
 export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
   const [list, setList] = useState<ListState>({ status: "loading" });
@@ -64,6 +82,21 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
       current = false;
     };
   }, [attempt]);
+
+  // While texts are still being analysed, refresh the list quietly now and then to show their counts.
+  const analysing = list.status === "ready" && list.documents.some((d) => isAnalysing(d));
+  const [polls, setPolls] = useState(0);
+  useEffect(() => {
+    if (!analysing || polls >= MAX_PROCESSING_POLLS) return;
+    const timer = setTimeout(() => {
+      listDocuments().then(
+        (documents) => setList((state) => (state.status === "ready" ? { status: "ready", documents } : state)),
+        () => undefined, // a failed refresh just keeps the current list
+      );
+      setPolls((n) => n + 1);
+    }, PROCESSING_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [analysing, polls]);
 
   const removeFromList = (id: string) =>
     setList((state) => (state.status === "ready" ? { ...state, documents: state.documents.filter((d) => d.id !== id) } : state));
@@ -278,6 +311,7 @@ function DocumentRow(props: RowProps) {
         <span className="block truncate font-serif text-lg">{summary.title}</span>
         <span className="block text-[13px] text-muted">
           {dateFormat.format(new Date(summary.createdAt))}
+          {processingText(summary)}
           {status}
         </span>
       </button>

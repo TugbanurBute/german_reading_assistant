@@ -6,11 +6,19 @@ export const MAX_CONTENT_LENGTH = 100_000;
 export const MAX_UPLOAD_BYTES = 512 * 1024;
 
 /** A library entry (GET /api/v1/documents returns no content). */
+/** The asynchronous analysis of a document (word, character and paragraph counts). */
+export type ProcessingStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+
 export interface DocumentSummary {
   id: string;
   title: string;
   createdAt: string;
   updatedAt: string;
+  processingStatus: ProcessingStatus;
+  /** Null until the analysis has completed. */
+  wordCount: number | null;
+  characterCount: number | null;
+  paragraphCount: number | null;
 }
 
 export interface SavedDocument extends DocumentSummary {

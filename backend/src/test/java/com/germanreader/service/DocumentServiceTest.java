@@ -14,6 +14,7 @@ import com.germanreader.dto.document.DocumentResponse;
 import com.germanreader.dto.document.DocumentSummary;
 import java.time.Instant;
 import com.germanreader.entity.ReadingDocument;
+import com.germanreader.entity.ProcessingStatus;
 import com.germanreader.exception.DocumentException;
 import com.germanreader.exception.ErrorCode;
 import com.germanreader.repository.ReadingDocumentRepository;
@@ -94,7 +95,7 @@ class DocumentServiceTest {
         UUID id = UUID.randomUUID();
         Instant before = Instant.now().minusSeconds(1);
         given(repository.rename(eq(id), eq(OWNER), any(), any())).willReturn(1);
-        DocumentSummary summary = new DocumentSummary(id, "Im Garten", before, Instant.now());
+        DocumentSummary summary = new DocumentSummary(id, "Im Garten", before, Instant.now(), ProcessingStatus.COMPLETED, 2, 9, 1);
         given(repository.findSummaryById(id, OWNER)).willReturn(Optional.of(summary));
 
         assertThat(service.rename(id, OWNER, "  Im Garten  ")).isEqualTo(summary);

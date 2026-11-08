@@ -39,6 +39,7 @@ frontend/  React 19 + TypeScript + Vite 8 + Tailwind CSS 4
 | PostgreSQL  | 15+     | running the backend and `./mvnw verify` (not for `./mvnw test`) |
 | Gemini key  | –       | only with `TRANSLATION_PROVIDER=gemini`                 |
 | Redis       | 7+      | the translation rate limit (optional: without it translations are not limited) |
+| RabbitMQ    | 4+      | document analysis: word, character and paragraph counts (optional: without it documents stay "Analysing…" and are still readable) |
 
 Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Windows).
 
@@ -56,7 +57,7 @@ Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Wi
    Redis for the rate limit (optional, see [Rate limit](#rate-limit)):
 
    ```bash
-   docker compose up -d redis
+   docker compose up -d redis rabbitmq
    ```
 
 2. **Backend** — on :8080:
@@ -105,6 +106,9 @@ real environment variables win over the file. All variables are listed in
 | `TRANSLATION_RATE_LIMIT` | no              | `10`                                             | Translation requests per user per window |
 | `TRANSLATION_RATE_WINDOW` | no             | `60s`                                            | Window length |
 | `TRANSLATION_RATE_LIMIT_ENABLED` | no      | `true`                                           | `false` switches the limit off |
+| `RABBITMQ_HOST`, `RABBITMQ_PORT` | no      | `localhost`, `5672`                              | RabbitMQ for document analysis |
+| `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD` | no | `guest`, `guest`                              | RabbitMQ credentials (`guest` only works on localhost) |
+| `DOCUMENT_PROCESSING_ENABLED` | no         | `true`                                           | `false`: no messages are published or consumed |
 | `SERVER_PORT`          | no                | `8080`                                           | |
 
 The `local` profile also provides defaults for `DB_URL`, `DB_USERNAME`, `CORS_ALLOWED_ORIGINS`
@@ -172,6 +176,8 @@ cd backend
 `./mvnw verify` uses the `local` profile (so it needs `backend/.env` or the DB variables) and the
 mock provider. It works in its own schema, `it_test`, and never touches your data or calls Gemini.
 `RedisRateLimiterIT` runs against a real Redis on `REDIS_HOST:REDIS_PORT` and is skipped when none is running.
+`RabbitMqDocumentProcessingIT` does the same with RabbitMQ on `RABBITMQ_HOST:RABBITMQ_PORT`. All other tests mock
+RabbitMQ (`src/test/resources/application.properties` switches document processing off).
 
 ```bash
 cd frontend
@@ -263,10 +269,13 @@ Retry-After: 42
 |---|---|---|
 | `POST /api/v1/documents` | JSON `{"title": "…", "content": "…"}` | `201` + `Location`, the document |
 | `POST /api/v1/documents/upload` | `multipart/form-data` with a `file` part | `201` + `Location`, the document |
-| `GET /api/v1/documents` | – | `200`, `[{id, title, createdAt, updatedAt}]`, newest first, no content |
-| `GET /api/v1/documents/{id}` | – | `200`, `{id, title, content, createdAt, updatedAt}` |
-| `PATCH /api/v1/documents/{id}` | JSON `{"title": "…"}` | `200`, `{id, title, createdAt, updatedAt}`: renames only, the content never changes |
+| `GET /api/v1/documents` | – | `200`, `[{id, title, createdAt, updatedAt, processingStatus, wordCount, characterCount, paragraphCount}]`, newest first, no content |
+| `GET /api/v1/documents/{id}` | – | `200`, `{id, title, content, createdAt, updatedAt, processingStatus, wordCount, characterCount, paragraphCount}` |
+| `PATCH /api/v1/documents/{id}` | JSON `{"title": "…"}` | `200`, the summary (as in the list): renames only, the content never changes |
 | `DELETE /api/v1/documents/{id}` | – | `204` |
+
+`processingStatus` is `PENDING`, `PROCESSING`, `COMPLETED` or `FAILED`; the counts are `null` until `COMPLETED`.
+A document is readable in every state.
 
 Rules:
 - **Title and content:** neither can be blank. The title has at most 200 characters and the content at most 100,000. Line breaks are stored as `\n`, and surrounding whitespace is removed.

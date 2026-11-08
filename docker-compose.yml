@@ -1,5 +1,3 @@
-# Local Redis for the translation rate limit: docker compose up -d redis
-# Counters only live for one window, so nothing is persisted to disk.
 services:
   redis:
     image: redis:7.4-alpine
@@ -11,3 +9,19 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rabbitmq-data:

@@ -1,6 +1,13 @@
 spring:
   application:
     name: german-reader
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    # The relay waits for RabbitMQ's confirm before marking a document's message as published.
+    publisher-confirm-type: simple
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -45,6 +52,10 @@ app:
       enabled: ${TRANSLATION_RATE_LIMIT_ENABLED:true}
       limit: ${TRANSLATION_RATE_LIMIT:10}
       window: ${TRANSLATION_RATE_WINDOW:60s}
+  document-processing:
+    # false: no messages are published or consumed; documents stay PENDING (reading is unaffected).
+    enabled: ${DOCUMENT_PROCESSING_ENABLED:true}
+    relay-interval: PT2S
 
 translation:
   provider: ${TRANSLATION_PROVIDER}
