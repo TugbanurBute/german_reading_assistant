@@ -1,0 +1,11 @@
+# Only the Maven wrapper, pom.xml and src/main + src/test are needed to build the image.
+target/
+.env
+.env.*
+*.log
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Dockerfile
+.dockerignore

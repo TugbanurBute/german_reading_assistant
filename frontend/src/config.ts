@@ -3,5 +3,5 @@
  * so these values are public — never put secrets in frontend environment variables.
  */
 export const config = {
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080",
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? "http://localhost:8080" : ""),
 } as const;

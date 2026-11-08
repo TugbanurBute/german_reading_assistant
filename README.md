@@ -44,18 +44,65 @@ frontend/  React 19 + TypeScript + Vite 8 + Tailwind CSS 4
 
 Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Windows).
 
+## Run everything with Docker
+
+Only Docker is needed. Copy the template, then set `POSTGRES_PASSWORD`, `JWT_SECRET` and `RABBITMQ_PASSWORD`
+(and `GEMINI_API_KEY` with `TRANSLATION_PROVIDER=gemini`):
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+Open http://localhost:8081.
+- **Frontend:** Nginx serves the built app and forwards `/api` to the backend on the same origin, which the login
+  and CSRF cookies need.
+- **Not reachable from outside:** the backend and PostgreSQL. Redis, RabbitMQ and Kafka listen on `127.0.0.1` only,
+  for the local development setup below.
+- **Startup order:** each service starts once the services it needs report healthy.
+- **Data:** stays in the named volumes `postgres-data`, `rabbitmq-data` and `kafka-data`.
+  `docker compose down` keeps them; `down -v` deletes them.
+- **Health:** the backend container is healthy when `/actuator/health/readiness` answers `UP`.
+- **Logs:** `docker compose logs -f backend` shows JSON logs; each request's lines carry the same `requestId` as
+  the Nginx access log (`rid=…`).
+
+| Compose variable (`.env`) | Required | Meaning |
+|---|---|---|
+| `POSTGRES_PASSWORD` | yes | Password of the database user (set when the volume is first created) |
+| `JWT_SECRET` | yes | Signs login tokens, at least 32 bytes (`openssl rand -base64 48`) |
+| `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD` | yes | RabbitMQ account of the backend (created when the volume is first created) |
+| `TRANSLATION_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL` | no | `mock` by default |
+| `FRONTEND_PORT`, `PUBLIC_ORIGIN` | no | `8081` and `http://localhost:8081`; `PUBLIC_ORIGIN` must match the browser's address bar |
+| `AUTH_COOKIE_SECURE` | no | `true`; Chrome and Firefox accept secure cookies on `http://localhost` |
+| `POSTGRES_DB`, `POSTGRES_USER`, `ANALYTICS_TIME_ZONE` | no | `german_reader`, `german_reader`, `UTC` |
+
 ## Quick start (mock mode, no API key)
 
-1. **Database** — create an empty database and user, for example:
+1. **Database** — either use the compose PostgreSQL, which is published on `127.0.0.1:5433` so it doesn't clash
+   with another project's PostgreSQL on 5432:
+
+   ```bash
+   docker compose up -d postgres
+   ```
+
+   with `DB_URL=jdbc:postgresql://localhost:5433/german_reader` and `DB_PASSWORD` = `POSTGRES_PASSWORD` from the
+   root `.env` in `backend/.env`. Or create an empty database and user in your own PostgreSQL, for example:
 
    ```sql
    CREATE USER german_reader WITH PASSWORD 'change-me';
    CREATE DATABASE german_reader OWNER german_reader;
    ```
 
-   Flyway creates the table on the first start.
+   Flyway creates the tables on the first start.
 
-   Redis for the rate limit (optional, see [Rate limit](#rate-limit)):
+   > Use only letters and digits in passwords and secrets in both `.env` files (e.g. `openssl rand -hex 24`).
+   > Spring and Docker Compose treat `$` and `${…}` as variables and silently change such a value.
+   > `POSTGRES_PASSWORD` and `RABBITMQ_*` only apply when their volume is first created; to change them later, also
+   > run `ALTER USER german_reader PASSWORD '…'` or `rabbitmqctl change_password lesehilfe …`.
+
+   Redis, RabbitMQ and Kafka (optional, see [Rate limit](#rate-limit)). This needs the root `.env` (see
+   [Run everything with Docker](#run-everything-with-docker)); use the same `RABBITMQ_USERNAME` and
+   `RABBITMQ_PASSWORD` in `backend/.env`:
 
    ```bash
    docker compose up -d redis rabbitmq kafka
@@ -113,6 +160,12 @@ real environment variables win over the file. All variables are listed in
 | `KAFKA_BOOTSTRAP_SERVERS` | no             | `localhost:9092`                                 | Kafka for vocabulary events |
 | `VOCABULARY_EVENTS_ENABLED` | no           | `true`                                           | `false`: no vocabulary events are published or consumed |
 | `ANALYTICS_TIME_ZONE`  | no                | `UTC`                                            | Time zone that decides the day a saved word counts for, and "today" (e.g. `Europe/Istanbul`) |
+| `LOGGING_STRUCTURED_FORMAT_CONSOLE` | no   | –                                                | `ecs`: JSON logs (set in Docker Compose); plain text otherwise. Both include the request id |
+
+Monitoring: only `GET /actuator/health` (with `/liveness` and `/readiness`) and `GET /actuator/info` are exposed,
+without login and without details. Readiness checks PostgreSQL. Redis, RabbitMQ and Kafka are left out on purpose,
+because the app keeps working without them. Every response carries an `X-Request-Id` header, which is also in each
+log line of that request.
 | `SERVER_PORT`          | no                | `8080`                                           | |
 
 The `local` profile also provides defaults for `DB_URL`, `DB_USERNAME`, `CORS_ALLOWED_ORIGINS`

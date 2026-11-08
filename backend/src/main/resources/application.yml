@@ -52,6 +52,31 @@ server:
     include-stacktrace: never
     include-message: never
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState, db
+  health:
+    redis:
+      enabled: false
+    rabbit:
+      enabled: false
+
+logging:
+  pattern:
+    correlation: "[%X{requestId:-}] "
+
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
