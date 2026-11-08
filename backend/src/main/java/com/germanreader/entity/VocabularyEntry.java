@@ -28,6 +28,10 @@ public class VocabularyEntry {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    /** The user the word belongs to; null only for words from before accounts existed (see V4). */
+    @Column(updatable = false)
+    private UUID ownerId;
+
     @Column(nullable = false, updatable = false, length = 100)
     private String originalText;
 
@@ -59,9 +63,10 @@ public class VocabularyEntry {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
-    public VocabularyEntry(String originalText, String lemma, Article article, PartOfSpeech partOfSpeech,
+    public VocabularyEntry(UUID ownerId, String originalText, String lemma, Article article, PartOfSpeech partOfSpeech,
                            String translation, TargetLanguage targetLanguage, String sourceSentence,
                            UUID sourceDocumentId) {
+        this.ownerId = ownerId;
         this.originalText = originalText;
         this.lemma = lemma;
         this.article = article;

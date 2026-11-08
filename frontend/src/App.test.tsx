@@ -137,6 +137,31 @@ function savedWord(overrides: Partial<VocabularyEntry>): VocabularyEntry {
   return entry;
 }
 
+/** The backend's accounts and login, in memory. Tests start logged in as Anna unless they log out. */
+const ANNA = { id: "user-anna", email: "anna@example.com" };
+const PASSWORDS: Record<string, string> = { "anna@example.com": "geheim-123" };
+let loggedIn: { id: string; email: string } | null = ANNA;
+
+function fakeAuth(path: string, init: RequestInit | undefined): Response {
+  const unauthenticated = () => json({ code: "UNAUTHENTICATED", detail: "Please log in." }, 401);
+  if (path === "/api/v1/auth/me") return loggedIn ? json(loggedIn) : unauthenticated();
+  if (path === "/api/v1/auth/logout") {
+    loggedIn = null;
+    return new Response(null, { status: 204 });
+  }
+  const { email, password } = JSON.parse(init?.body as string) as { email: string; password: string };
+  const normalized = email.trim().toLowerCase();
+  if (path === "/api/v1/auth/register") {
+    if (PASSWORDS[normalized]) return json({ code: "EMAIL_TAKEN", detail: "Taken." }, 409);
+    PASSWORDS[normalized] = password;
+    loggedIn = { id: `user-${normalized}`, email: normalized };
+    return json(loggedIn, 201);
+  }
+  if (PASSWORDS[normalized] !== password) return json({ code: "INVALID_CREDENTIALS", detail: "Wrong." }, 401);
+  loggedIn = normalized === ANNA.email ? ANNA : { id: `user-${normalized}`, email: normalized };
+  return json(loggedIn);
+}
+
 const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
@@ -145,9 +170,14 @@ beforeEach(() => {
   library = [];
   nextId = 1;
   vocabulary = [];
+  loggedIn = ANNA;
+  for (const email of Object.keys(PASSWORDS)) if (email !== ANNA.email) delete PASSWORDS[email];
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (url, init) => {
     const path = new URL(url as string).pathname;
+    if (path.startsWith("/api/v1/auth/")) return fakeAuth(path, init);
+    // Like the real backend: everything else needs a login.
+    if (!loggedIn) return json({ code: "UNAUTHENTICATED", detail: "Please log in." }, 401);
     if (path === "/api/v1/translations") return fakeBackend(JSON.parse(init?.body as string) as TranslationRequest);
     if (path.startsWith("/api/v1/vocabulary")) return fakeVocabulary(path, init);
     return fakeLibrary(path, init);
@@ -296,7 +326,15 @@ describe("reading library", () => {
   });
 
   it("offers a retry when the library can't be loaded", async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const backend = fetchMock.getMockImplementation()!;
+    let failed = false;
+    fetchMock.mockImplementation(async (url, init) => {
+      if (!failed && new URL(url as string).pathname === "/api/v1/documents") {
+        failed = true;
+        throw new TypeError("Failed to fetch");
+      }
+      return backend(url, init);
+    });
     const user = userEvent.setup();
     render(<App />);
 
@@ -651,11 +689,138 @@ describe("preferences", () => {
   it("remembers the theme", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await screen.findByRole("button", { name: "New text" }); // the session check is done
 
     await user.click(screen.getByRole("button", { name: "Switch to dark theme" }));
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem("lesehilfe.theme")).toBe('"dark"');
+  });
+});
+
+describe("accounts", () => {
+  const field = (name: string) => screen.getByLabelText(name, { exact: false });
+
+  async function showLogin() {
+    loggedIn = null;
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Log in" });
+    return user;
+  }
+
+  it("shows the login instead of the library without a session", async () => {
+    await showLogin();
+
+    expect(screen.queryByRole("button", { name: "New text" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.map(([url]) => new URL(url as string).pathname)).toEqual(["/api/v1/auth/me"]);
+  });
+
+  it("logs in and opens the library", async () => {
+    const user = await showLogin();
+
+    await user.type(field("Email"), "  Anna@Example.com ");
+    await user.type(field("Password"), "geheim-123");
+    await user.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(await screen.findByText("Your library is empty")).toBeInTheDocument();
+    expect(screen.getByText("anna@example.com")).toBeInTheDocument();
+    // Cookies travel with every request; the token itself is never visible here.
+    expect(fetchMock.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
+    // Only preferences are stored in the browser, no token.
+    expect(Object.keys(localStorage).sort()).toEqual(["lesehilfe.language", "lesehilfe.mode", "lesehilfe.theme"]);
+  });
+
+  it("explains a wrong password and keeps the form", async () => {
+    const user = await showLogin();
+
+    await user.type(field("Email"), "anna@example.com");
+    await user.type(field("Password"), "falsch-falsch");
+    await user.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The email or password is incorrect.");
+    expect(field("Password")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("creates an account, checking the password first", async () => {
+    const user = await showLogin();
+    await user.click(screen.getByRole("button", { name: "Create an account" }));
+    expect(screen.getByRole("heading", { name: "Create an account" })).toBeInTheDocument();
+
+    await user.type(field("Email"), "ben@example.com");
+    await user.type(field("Password"), "kurz");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Use at least 8 characters.");
+    expect(fetchMock.mock.calls.some(([url]) => (url as string).endsWith("/register"))).toBe(false);
+
+    await user.type(field("Password"), "-und-lang");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByText("ben@example.com")).toBeInTheDocument();
+  });
+
+  it("says when an email is already registered", async () => {
+    const user = await showLogin();
+    await user.click(screen.getByRole("button", { name: "Create an account" }));
+
+    await user.type(field("Email"), "anna@example.com");
+    await user.type(field("Password"), "irgendein-passwort");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("An account with this email already exists.");
+  });
+
+  it("logs out and forgets the previous user's screens", async () => {
+    saveToLibrary("Annas Text", SAMPLE_TEXT);
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: /^Annas Text/ });
+
+    await user.click(screen.getByRole("button", { name: "Log out" }));
+
+    expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("You have been logged out.");
+    expect(screen.queryByText("Annas Text")).not.toBeInTheDocument();
+  });
+
+  it("returns to the login when the session ends while reading", async () => {
+    const user = await startReadingSample();
+    loggedIn = null; // e.g. the token expired
+
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[0]!);
+
+    expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Your session has ended. Please log in again.");
+  });
+
+  it("sends the CSRF token from the XSRF-TOKEN cookie with changes, not with reads", async () => {
+    document.cookie = "XSRF-TOKEN=token-123";
+    try {
+      const user = await openWriteScreen();
+      await user.click(screen.getByRole("button", { name: "Load sample text" }));
+      await user.click(screen.getByRole("button", { name: "Save and read" }));
+      await vi.waitFor(() => expect(library).toHaveLength(1));
+    } finally {
+      document.cookie = "XSRF-TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    }
+
+    const headersOf = (method: string) =>
+      fetchMock.mock.calls.filter(([, init]) => (init?.method ?? "GET") === method).map(([, init]) => init?.headers as Record<string, string>);
+    expect(headersOf("POST").some((headers) => headers["X-XSRF-TOKEN"] === "token-123")).toBe(true);
+    expect(headersOf("GET").every((headers) => headers["X-XSRF-TOKEN"] === undefined)).toBe(true);
+  });
+
+  it("offers a retry when the server can't be reached at start", async () => {
+    const backend = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementationOnce(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(await screen.findByText("Couldn't reach the server")).toBeInTheDocument();
+    fetchMock.mockImplementation(backend);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Your library is empty")).toBeInTheDocument();
   });
 });
 

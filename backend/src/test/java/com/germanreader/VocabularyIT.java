@@ -19,13 +19,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import com.germanreader.security.TestAuth;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -38,6 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
 })
 @ActiveProfiles("local")
 @AutoConfigureMockMvc
+@Import(TestAuth.AsDefaultUser.class)
 class VocabularyIT {
 
     private static final String URL = "/api/v1/vocabulary";
@@ -46,6 +50,9 @@ class VocabularyIT {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @Autowired
     private VocabularyEntryRepository repository;
@@ -58,6 +65,7 @@ class VocabularyIT {
 
     @BeforeEach
     void emptyTables() {
+        TestAuth.ensureUser(jdbc, TestAuth.USER_ID);
         repository.deleteAllInBatch();
         documentRepository.deleteAllInBatch();
     }
@@ -90,7 +98,7 @@ class VocabularyIT {
 
     @Test
     void savedWordIsStoredWithAllFields() throws Exception {
-        ReadingDocument document = documentRepository.save(new ReadingDocument("Im Park", PARK));
+        ReadingDocument document = documentRepository.save(new ReadingDocument(TestAuth.USER_ID, "Im Park", PARK));
         Map<String, Object> body = bankAsBench();
         body.put("sourceDocumentId", document.getId().toString());
 
@@ -152,10 +160,10 @@ class VocabularyIT {
 
     @Test
     void theDatabaseRejectsADuplicateMeaningEvenWithoutTheService() {
-        repository.saveAndFlush(new VocabularyEntry("Bank", "Bank", null, null, "bench", TargetLanguage.EN, null, null));
+        repository.saveAndFlush(new VocabularyEntry(TestAuth.USER_ID, "Bank", "Bank", null, null, "bench", TargetLanguage.EN, null, null));
 
         assertThatThrownBy(() -> repository.saveAndFlush(
-                new VocabularyEntry("Bank", "BANK", null, null, "BENCH", TargetLanguage.EN, null, null)))
+                new VocabularyEntry(TestAuth.USER_ID, "Bank", "BANK", null, null, "BENCH", TargetLanguage.EN, null, null)))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -185,7 +193,7 @@ class VocabularyIT {
 
     @Test
     void deletingTheSourceTextKeepsTheWordAndClearsTheLink() throws Exception {
-        ReadingDocument document = documentRepository.save(new ReadingDocument("Im Park", PARK));
+        ReadingDocument document = documentRepository.save(new ReadingDocument(TestAuth.USER_ID, "Im Park", PARK));
         Map<String, Object> body = bankAsBench();
         body.put("sourceDocumentId", document.getId().toString());
         UUID id = idOf(save(body));

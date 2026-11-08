@@ -24,6 +24,10 @@ public class ReadingDocument {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    /** The user the text belongs to; null only for texts from before accounts existed (see V4). */
+    @Column(updatable = false)
+    private UUID ownerId;
+
     @Column(nullable = false, length = 200)
     private String title;
 
@@ -36,7 +40,8 @@ public class ReadingDocument {
     @Column(nullable = false)
     private Instant updatedAt;
 
-    public ReadingDocument(String title, String content) {
+    public ReadingDocument(UUID ownerId, String title, String content) {
+        this.ownerId = ownerId;
         this.title = title;
         this.content = content;
         // PostgreSQL stores microseconds; truncating keeps the returned value equal to the stored one.

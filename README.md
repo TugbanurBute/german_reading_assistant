@@ -15,12 +15,13 @@ and opened again later.
 
 > Status: MVP v0.1. The frontend is called "Lesehilfe".
 
+Every user has an account. Texts and saved words belong to their owner and are invisible to everyone else.
+
 > [!WARNING]
-> **Local, single-user use only.** The API has no authentication.
-> - Anyone who can reach the backend can read, add and delete every saved text in the library.
-> - Anyone who can reach it can also spend your Gemini quota.
->
-> Do not deploy it publicly, or on a shared network, as it is. User accounts and authentication are planned for a later phase.
+> **Before using it anywhere but your own machine:**
+> - Set `JWT_SECRET`.
+> - Serve it over HTTPS (the login cookie is `Secure` outside the `local` profile).
+> - Add rate limiting for login and registration, which the app doesn't do yet.
 
 ## Layout
 
@@ -67,8 +68,8 @@ Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Wi
    npm run dev
    ```
 
-4. Open http://localhost:5173. Click **New text**, then **Load sample text**, then **Save and read**
-   (or **Read without saving**).
+4. Open http://localhost:5173, **create an account**, then click **New text**, then **Load sample text**,
+   then **Save and read** (or **Read without saving**).
 
 The mock provider only knows the words and sentences of the sample text. Any other word answers
 "No sample translation for this". Use the Gemini provider for real text.
@@ -90,6 +91,9 @@ real environment variables win over the file. All variables are listed in
 | `GEMINI_MODEL`         | with `gemini`     | a current Flash model                            | Must support structured JSON output |
 | `GEMINI_TIMEOUT`       | no                | `15s`                                            | Per-request timeout |
 | `GEMINI_VERIFY_MODEL`  | no                | `false`                                          | `true`: check once at startup that `GEMINI_MODEL` exists (one call to Google; result is logged, never stops the app) |
+| `JWT_SECRET`           | yes, outside `local` | at least 32 random bytes                      | Signs login tokens. Without it the `local` profile uses a random key (everyone logs in again after a restart); other profiles refuse to start |
+| `AUTH_TOKEN_TTL`       | no                | `8h`                                             | How long a login lasts |
+| `AUTH_COOKIE_SECURE`   | no                | `true` (`false` in `local`)                      | Send the login cookie over HTTPS only |
 | `SERVER_PORT`          | no                | `8080`                                           | |
 
 The `local` profile also provides defaults for `DB_URL`, `DB_USERNAME`, `CORS_ALLOWED_ORIGINS`
@@ -165,6 +169,32 @@ npm run build     # type check + production build
 
 ## API
 
+Everything except registration, login and logout needs a login (translations included); otherwise the answer is
+`401 UNAUTHENTICATED`.
+
+### Accounts
+
+| Method and path | Body | Success |
+|---|---|---|
+| `POST /api/v1/auth/register` | JSON `{"email": "…", "password": "…"}` | `201`, `{id, email}`, and the login cookie |
+| `POST /api/v1/auth/login` | JSON `{"email": "…", "password": "…"}` | `200`, `{id, email}`, and the login cookie |
+| `POST /api/v1/auth/logout` | – | `204`, removes the cookie |
+| `GET /api/v1/auth/me` | – | `200`, `{id, email}` |
+
+- **Passwords:** 8 to 72 characters, at most 72 bytes (BCrypt's limit). Only the BCrypt hash (strength 12) is stored.
+- **Emails:** case-insensitive and unique (`409 EMAIL_TAKEN`).
+- **Wrong logins:** a wrong password and an unknown email both get `401 INVALID_CREDENTIALS`.
+- **The token:**
+  - It's a JWT signed with HS256, containing the user id, issuer, issue time and expiry.
+  - It travels only in the `access_token` cookie: `HttpOnly`, `SameSite=Strict`, `Path=/api`, and `Secure` outside `local`.
+  - JavaScript never sees it, and it is never logged.
+- **CSRF:** POST, PATCH and DELETE also need the CSRF token. The backend sets it in the readable `XSRF-TOKEN`
+  cookie, and the frontend echoes it in the `X-XSRF-TOKEN` header. Without it the answer is `403 FORBIDDEN`.
+- **Other users' resources:** a text or word of another user answers `404`, exactly like a missing one, so ids
+  reveal nothing.
+
+### Translations
+
 `POST /api/v1/translations`
 
 ```json
@@ -184,7 +214,7 @@ npm run build     # type check + production build
 A successful answer contains `translation`, `lemma`, `partOfSpeech`, a `grammar` object whose shape
 depends on `grammar.kind` (`NOUN`, `VERB`, `OTHER`), and `sentenceTranslation`.
 
-### Reading library (unauthenticated, see the warning above)
+### Reading library (your own texts only)
 
 | Method and path | Body | Success |
 |---|---|---|
@@ -203,7 +233,7 @@ Rules:
   - Control characters other than tab and line breaks are rejected, since they mean a binary file. The MIME type the browser sends is ignored.
   - The title is the file name without `.txt`.
 
-### My words (unauthenticated, see the warning above)
+### My words (your own words only)
 
 | Method and path | Body | Success |
 |---|---|---|
@@ -239,7 +269,10 @@ Errors are RFC 9457 problem details with a stable `code`:
 | Status | `code` |
 |--------|--------|
 | 400 | `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `REQUEST_ERROR` (e.g. an id that is not a UUID), `INVALID_UPLOAD` |
-| 404 | `MOCK_TRANSLATION_NOT_FOUND`, `DOCUMENT_NOT_FOUND`, `VOCABULARY_NOT_FOUND` |
+| 401 | `UNAUTHENTICATED` (no, expired or invalid token), `INVALID_CREDENTIALS` |
+| 403 | `FORBIDDEN` (missing or wrong CSRF token) |
+| 404 | `MOCK_TRANSLATION_NOT_FOUND`, `DOCUMENT_NOT_FOUND`, `VOCABULARY_NOT_FOUND` (also for other users' resources) |
+| 409 | `EMAIL_TAKEN` |
 | 413 | `UPLOAD_TOO_LARGE` |
 | 502 | `PROVIDER_INVALID_RESPONSE` |
 | 503 | `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_MODEL_UNAVAILABLE`, `PROVIDER_REJECTED` |
@@ -284,9 +317,26 @@ The reading library follows the same layers: `DocumentController` → `DocumentS
   index and it returns the winner's entry.
 - `source_document_id` is a foreign key with `ON DELETE SET NULL`, so deleting a text keeps its words.
 
+**Accounts and ownership** (`security/`, migration `V4`):
+- `SecurityConfig` is stateless. A `BearerTokenAuthenticationFilter` reads the JWT from the cookie and checks its
+  signature, issuer and expiry.
+- That filter is registered directly, not through `oauth2ResourceServer()`, because the latter switches CSRF off
+  for requests that carry a token. That's right for `Authorization` headers, but wrong for a cookie.
+- `reading_document` and `vocabulary_entry` have an `owner_id`. Every query the API uses filters by it, and a word
+  can only link to its owner's own texts.
+- "One entry per meaning" is now per user.
+- The translation cache stays shared: it only holds translations of text, and a hit requires sending exactly that text.
+- Rows from before accounts existed have `owner_id = NULL`, so no user can see them.
+
 ### Frontend
 
-The app opens on the **library**. From there:
+The app first asks the backend who is logged in (`GET /api/v1/auth/me`). Without a session it shows the
+**login / create account** form. Every request sends the cookies (`credentials: "include"`), and every change
+also sends the CSRF header. If a request answers `401` (for example, the login expired), the app returns to the
+login screen.
+
+After logging in, the app opens on the **library**. From there:
+- Your email and **Log out** are shown under the heading.
 - **New text** opens the paste screen.
 - **Upload .txt** adds a file.
 - A saved text opens in the reader, whose header button leads back to the library.

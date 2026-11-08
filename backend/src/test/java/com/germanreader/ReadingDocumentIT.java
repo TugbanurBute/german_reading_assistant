@@ -18,12 +18,15 @@ import com.germanreader.repository.VocabularyEntryRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
+import com.germanreader.security.TestAuth;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,6 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
 })
 @ActiveProfiles("local")
 @AutoConfigureMockMvc
+@Import(TestAuth.AsDefaultUser.class)
 class ReadingDocumentIT {
 
     private static final String URL = "/api/v1/documents";
@@ -45,6 +49,9 @@ class ReadingDocumentIT {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @Autowired
     private ReadingDocumentRepository repository;
@@ -57,6 +64,7 @@ class ReadingDocumentIT {
 
     @BeforeEach
     void emptyLibrary() {
+        TestAuth.ensureUser(jdbc, TestAuth.USER_ID);
         vocabularyRepository.deleteAllInBatch();
         repository.deleteAllInBatch();
     }
@@ -128,7 +136,7 @@ class ReadingDocumentIT {
     void renameChangesOnlyTheTitleAndUpdatedAt() throws Exception {
         UUID id = createDocument("Im Park", TEXT);
         ReadingDocument before = repository.findById(id).orElseThrow();
-        VocabularyEntry word = vocabularyRepository.saveAndFlush(new VocabularyEntry(
+        VocabularyEntry word = vocabularyRepository.saveAndFlush(new VocabularyEntry(TestAuth.USER_ID, 
                 "Bank", "Bank", null, null, "bench", TargetLanguage.EN, null, id));
 
         mockMvc.perform(patch(URL + "/" + id).contentType(MediaType.APPLICATION_JSON)

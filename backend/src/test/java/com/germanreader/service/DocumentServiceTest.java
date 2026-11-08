@@ -28,6 +28,8 @@ import org.springframework.mock.web.MockMultipartFile;
 
 class DocumentServiceTest {
 
+    private static final UUID OWNER = UUID.fromString("7c9e6679-7425-40de-944b-e07fc1f90ae7");
+
     private final ReadingDocumentRepository repository = mock(ReadingDocumentRepository.class);
     private final DocumentService service = new DocumentService(repository);
 
@@ -51,14 +53,14 @@ class DocumentServiceTest {
     }
 
     private void assertRejected(MockMultipartFile file, ErrorCode expected) {
-        assertThatThrownBy(() -> service.upload(file))
+        assertThatThrownBy(() -> service.upload(OWNER, file))
                 .isInstanceOfSatisfying(DocumentException.class, e -> assertThat(e.getErrorCode()).isEqualTo(expected));
         verify(repository, never()).save(any());
     }
 
     @Test
     void createTrimsTheTitleAndNormalizesLineBreaks() {
-        DocumentResponse response = service.create("  Märchen  ", "\r\nEs war einmal.\r\nEnde.\r\n");
+        DocumentResponse response = service.create(OWNER, "  Märchen  ", "\r\nEs war einmal.\r\nEnde.\r\n");
 
         ReadingDocument saved = savedDocument();
         assertThat(saved.getTitle()).isEqualTo("Märchen");
@@ -70,9 +72,9 @@ class DocumentServiceTest {
     @Test
     void getThrowsNotFoundForAnUnknownId() {
         UUID id = UUID.randomUUID();
-        given(repository.findById(id)).willReturn(Optional.empty());
+        given(repository.findByIdAndOwnerId(id, OWNER)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.get(id))
+        assertThatThrownBy(() -> service.get(id, OWNER))
                 .isInstanceOfSatisfying(DocumentException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
     }
@@ -80,9 +82,9 @@ class DocumentServiceTest {
     @Test
     void deleteThrowsNotFoundWhenNothingWasDeleted() {
         UUID id = UUID.randomUUID();
-        given(repository.deleteDocumentById(id)).willReturn(0);
+        given(repository.deleteDocumentById(id, OWNER)).willReturn(0);
 
-        assertThatThrownBy(() -> service.delete(id))
+        assertThatThrownBy(() -> service.delete(id, OWNER))
                 .isInstanceOfSatisfying(DocumentException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
     }
@@ -91,14 +93,14 @@ class DocumentServiceTest {
     void renameStripsTheTitleAndSetsANewUpdatedAt() {
         UUID id = UUID.randomUUID();
         Instant before = Instant.now().minusSeconds(1);
-        given(repository.rename(eq(id), any(), any())).willReturn(1);
+        given(repository.rename(eq(id), eq(OWNER), any(), any())).willReturn(1);
         DocumentSummary summary = new DocumentSummary(id, "Im Garten", before, Instant.now());
-        given(repository.findSummaryById(id)).willReturn(Optional.of(summary));
+        given(repository.findSummaryById(id, OWNER)).willReturn(Optional.of(summary));
 
-        assertThat(service.rename(id, "  Im Garten  ")).isEqualTo(summary);
+        assertThat(service.rename(id, OWNER, "  Im Garten  ")).isEqualTo(summary);
 
         ArgumentCaptor<Instant> updatedAt = ArgumentCaptor.forClass(Instant.class);
-        verify(repository).rename(eq(id), eq("Im Garten"), updatedAt.capture());
+        verify(repository).rename(eq(id), eq(OWNER), eq("Im Garten"), updatedAt.capture());
         assertThat(updatedAt.getValue()).isAfter(before);
         assertThat(updatedAt.getValue().getNano() % 1000).isZero(); // microseconds, as PostgreSQL stores them
     }
@@ -106,12 +108,12 @@ class DocumentServiceTest {
     @Test
     void renameThrowsNotFoundWhenNothingWasUpdated() {
         UUID id = UUID.randomUUID();
-        given(repository.rename(eq(id), any(), any())).willReturn(0);
+        given(repository.rename(eq(id), eq(OWNER), any(), any())).willReturn(0);
 
-        assertThatThrownBy(() -> service.rename(id, "Neu"))
+        assertThatThrownBy(() -> service.rename(id, OWNER, "Neu"))
                 .isInstanceOfSatisfying(DocumentException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND));
-        verify(repository, never()).findSummaryById(any());
+        verify(repository, never()).findSummaryById(any(), any());
     }
 
     @Nested
@@ -119,7 +121,7 @@ class DocumentServiceTest {
 
         @Test
         void storesTheTextTitledAfterTheFileName() {
-            service.upload(txt("Die Großmutter.txt", "Am Morgen sitzt meine Großmutter auf der Bank.\n"));
+            service.upload(OWNER, txt("Die Großmutter.txt", "Am Morgen sitzt meine Großmutter auf der Bank.\n"));
 
             ReadingDocument saved = savedDocument();
             assertThat(saved.getTitle()).isEqualTo("Die Großmutter");
@@ -128,7 +130,7 @@ class DocumentServiceTest {
 
         @Test
         void acceptsAnUppercaseExtensionAndStripsTheByteOrderMark() {
-            service.upload(txt("NOTES.TXT", "\uFEFFÜber Brücken."));
+            service.upload(OWNER, txt("NOTES.TXT", "\uFEFFÜber Brücken."));
 
             ReadingDocument saved = savedDocument();
             assertThat(saved.getTitle()).isEqualTo("NOTES");
@@ -137,21 +139,21 @@ class DocumentServiceTest {
 
         @Test
         void ignoresAPathInTheFileName() {
-            service.upload(txt("C:/Users/someone/texte/kapitel.txt", "Text."));
+            service.upload(OWNER, txt("C:/Users/someone/texte/kapitel.txt", "Text."));
 
             assertThat(savedDocument().getTitle()).isEqualTo("kapitel");
         }
 
         @Test
         void usesAPlaceholderTitleWhenTheNameIsOnlyAnExtension() {
-            service.upload(txt(".txt", "Text."));
+            service.upload(OWNER, txt(".txt", "Text."));
 
             assertThat(savedDocument().getTitle()).isEqualTo(DocumentService.UNTITLED);
         }
 
         @Test
         void shortensAVeryLongFileName() {
-            service.upload(txt("a".repeat(300) + ".txt", "Text."));
+            service.upload(OWNER, txt("a".repeat(300) + ".txt", "Text."));
 
             assertThat(savedDocument().getTitle()).hasSize(DocumentLimits.MAX_TITLE_LENGTH);
         }

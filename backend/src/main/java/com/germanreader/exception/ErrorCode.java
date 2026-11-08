@@ -26,6 +26,11 @@ public enum ErrorCode {
 
     VOCABULARY_NOT_FOUND(HttpStatus.NOT_FOUND, "The saved word does not exist. It may have been deleted."),
 
+    UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "Please log in."),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "The email or password is incorrect."),
+    EMAIL_TAKEN(HttpStatus.CONFLICT, "An account with this email already exists."),
+    FORBIDDEN(HttpStatus.FORBIDDEN, "The request was refused. Reload the page and try again."),
+
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.");
 
     private final HttpStatus status;

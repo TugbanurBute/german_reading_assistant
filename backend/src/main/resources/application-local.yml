@@ -8,6 +8,10 @@ spring:
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  auth:
+    # http://localhost has no HTTPS, and a missing JWT_SECRET gets a random key (logins end on restart).
+    cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    allow-generated-secret: true
 
 translation:
   provider: ${TRANSLATION_PROVIDER:mock}

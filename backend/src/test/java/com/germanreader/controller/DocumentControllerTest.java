@@ -25,7 +25,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import com.germanreader.security.TestAuth;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -36,7 +38,8 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @WebMvcTest(controllers = DocumentController.class,
-        properties = "app.cors.allowed-origins=http://localhost:5173")
+        properties = {"app.cors.allowed-origins=http://localhost:5173", "app.auth.allow-generated-secret=true"})
+@Import(TestAuth.WebSecurity.class)
 class DocumentControllerTest {
 
     private static final String URL = "/api/v1/documents";
@@ -57,7 +60,7 @@ class DocumentControllerTest {
 
     @Test
     void createReturns201WithLocationAndTheDocument() throws Exception {
-        given(documentService.create("Im Park", DOCUMENT.content())).willReturn(DOCUMENT);
+        given(documentService.create(TestAuth.USER_ID, "Im Park", DOCUMENT.content())).willReturn(DOCUMENT);
 
         postJson("""
                 {"title": "Im Park", "content": "Am Morgen sitzt meine Großmutter auf der Bank."}
@@ -111,7 +114,7 @@ class DocumentControllerTest {
 
     @Test
     void listReturnsMetadataWithoutContent() throws Exception {
-        given(documentService.list()).willReturn(List.of(new DocumentSummary(ID, "Im Park", CREATED, CREATED)));
+        given(documentService.list(TestAuth.USER_ID)).willReturn(List.of(new DocumentSummary(ID, "Im Park", CREATED, CREATED)));
 
         mockMvc.perform(get(URL))
                 .andExpect(status().isOk())
@@ -122,7 +125,7 @@ class DocumentControllerTest {
 
     @Test
     void getReturnsTheDocument() throws Exception {
-        given(documentService.get(ID)).willReturn(DOCUMENT);
+        given(documentService.get(ID, TestAuth.USER_ID)).willReturn(DOCUMENT);
 
         mockMvc.perform(get(URL + "/" + ID))
                 .andExpect(status().isOk())
@@ -131,8 +134,8 @@ class DocumentControllerTest {
 
     @Test
     void getAndDeleteReturn404ForAMissingDocument() throws Exception {
-        given(documentService.get(ID)).willThrow(new DocumentException(ErrorCode.DOCUMENT_NOT_FOUND, "No document"));
-        willThrow(new DocumentException(ErrorCode.DOCUMENT_NOT_FOUND, "No document")).given(documentService).delete(ID);
+        given(documentService.get(ID, TestAuth.USER_ID)).willThrow(new DocumentException(ErrorCode.DOCUMENT_NOT_FOUND, "No document"));
+        willThrow(new DocumentException(ErrorCode.DOCUMENT_NOT_FOUND, "No document")).given(documentService).delete(ID, TestAuth.USER_ID);
 
         mockMvc.perform(get(URL + "/" + ID))
                 .andExpect(status().isNotFound())
@@ -153,13 +156,13 @@ class DocumentControllerTest {
     @Test
     void deleteReturns204() throws Exception {
         mockMvc.perform(delete(URL + "/" + ID)).andExpect(status().isNoContent());
-        verify(documentService).delete(ID);
+        verify(documentService).delete(ID, TestAuth.USER_ID);
     }
 
     @Test
     void uploadReturns201() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "park.txt", "text/plain", "Text.".getBytes());
-        given(documentService.upload(any())).willReturn(DOCUMENT);
+        given(documentService.upload(any(), any())).willReturn(DOCUMENT);
 
         mockMvc.perform(multipart(URL + "/upload").file(file))
                 .andExpect(status().isCreated())
@@ -170,7 +173,7 @@ class DocumentControllerTest {
     @Test
     void invalidUploadReturns400WithoutInternalDetails() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "bild.txt", "text/plain", new byte[]{0});
-        given(documentService.upload(any()))
+        given(documentService.upload(any(), any()))
                 .willThrow(new DocumentException(ErrorCode.INVALID_UPLOAD, "The file contains control characters"));
 
         mockMvc.perform(multipart(URL + "/upload").file(file))
@@ -182,7 +185,7 @@ class DocumentControllerTest {
     @Test
     void tooLargeUploadsReturn413() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "lang.txt", "text/plain", "Text.".getBytes());
-        given(documentService.upload(any())).willThrow(new MaxUploadSizeExceededException(512 * 1024));
+        given(documentService.upload(any(), any())).willThrow(new MaxUploadSizeExceededException(512 * 1024));
 
         mockMvc.perform(multipart(URL + "/upload").file(file))
                 .andExpect(status().isContentTooLarge())
@@ -203,7 +206,7 @@ class DocumentControllerTest {
     @Test
     void renameReturnsTheUpdatedSummaryWithoutContent() throws Exception {
         Instant renamed = CREATED.plusSeconds(60);
-        given(documentService.rename(ID, "Im Garten")).willReturn(new DocumentSummary(ID, "Im Garten", CREATED, renamed));
+        given(documentService.rename(ID, TestAuth.USER_ID, "Im Garten")).willReturn(new DocumentSummary(ID, "Im Garten", CREATED, renamed));
 
         patchJson("{\"title\": \"Im Garten\"}")
                 .andExpect(status().isOk())
@@ -233,7 +236,7 @@ class DocumentControllerTest {
 
     @Test
     void renamingAMissingDocumentReturns404() throws Exception {
-        given(documentService.rename(any(), any()))
+        given(documentService.rename(any(), any(), any()))
                 .willThrow(new DocumentException(ErrorCode.DOCUMENT_NOT_FOUND, "No document"));
 
         patchJson("{\"title\": \"Neu\"}")

@@ -15,6 +15,8 @@ import { forgetPosition } from "../text/readingPosition.ts";
 import { libraryErrorMessage } from "./labels.ts";
 
 interface Props {
+  /** The logged-in account, shown with a Log out button. */
+  account: { email: string; onLogout: () => void };
   onNew: () => void;
   onWords: () => void;
   onOpen: (document: SavedDocument) => void;
@@ -41,7 +43,7 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", tim
 
 const secondaryButton = "rounded-lg border border-line px-3.5 py-2 text-sm hover:bg-control";
 
-export function LibraryScreen({ onNew, onWords, onOpen }: Props) {
+export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -162,6 +164,12 @@ export function LibraryScreen({ onNew, onWords, onOpen }: Props) {
         <div className="mr-auto">
           <h1 className="font-serif text-xl font-medium">Your library</h1>
           <p className="mt-1 text-[13px] text-muted">Saved texts, newest first.</p>
+          <p className="mt-1 text-[13px] text-muted">
+            <span className="break-all">{account.email}</span> ·{" "}
+            <button type="button" onClick={account.onLogout} className="text-accent underline-offset-2 hover:underline">
+              Log out
+            </button>
+          </p>
         </div>
         <button type="button" onClick={onWords} className={secondaryButton}>
           My words

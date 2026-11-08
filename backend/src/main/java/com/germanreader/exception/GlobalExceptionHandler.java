@@ -63,6 +63,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(ex.getErrorCode(), null);
     }
 
+    @ExceptionHandler(AuthException.class)
+    ResponseEntity<Object> handleAuthException(AuthException ex) {
+        // The message never contains the email, password or token.
+        log.debug("Auth request rejected with {}: {}", ex.getErrorCode(), ex.getMessage());
+        return problem(ex.getErrorCode(), null);
+    }
+
     @ExceptionHandler(VocabularyException.class)
     ResponseEntity<Object> handleVocabularyException(VocabularyException ex) {
         // The message holds ids only, never the saved words or sentences.

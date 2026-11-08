@@ -39,29 +39,30 @@ public class VocabularyService {
      * <p>Not transactional: each repository call runs in its own transaction. A failed INSERT aborts its
      * PostgreSQL transaction, and the follow-up lookup after a race must still be able to run.
      */
-    public SaveResult save(SaveVocabularyRequest request) {
+    public SaveResult save(UUID ownerId, SaveVocabularyRequest request) {
         String originalText = TextNormalizer.normalize(request.originalText());
         String lemma = isBlank(request.lemma()) ? originalText : TextNormalizer.normalize(request.lemma());
         String translation = TextNormalizer.normalize(request.translation());
         String sentence = isBlank(request.sourceSentence()) ? null : TextNormalizer.normalize(request.sourceSentence());
 
-        var existing = repository.findMeaning(lemma, request.targetLanguage(), translation);
+        var existing = repository.findMeaning(ownerId, lemma, request.targetLanguage(), translation);
         if (existing.isPresent()) {
-            return new SaveResult(get(existing.get()), false);
+            return new SaveResult(get(existing.get(), ownerId), false);
         }
 
-        // A word read in a text that was deleted meanwhile is still worth keeping, just without the link.
+        // Only the owner's own texts can be linked. A word read in a text that was deleted meanwhile (or an id
+        // of someone else's text) is still saved, just without the link.
         UUID documentId = request.sourceDocumentId();
-        if (documentId != null && !documentRepository.existsById(documentId)) {
+        if (documentId != null && !documentRepository.existsByIdAndOwnerId(documentId, ownerId)) {
             documentId = null;
         }
 
-        VocabularyEntry entry = new VocabularyEntry(originalText, lemma, request.article(), request.partOfSpeech(),
+        VocabularyEntry entry = new VocabularyEntry(ownerId, originalText, lemma, request.article(), request.partOfSpeech(),
                 translation, request.targetLanguage(), sentence, documentId);
         try {
             UUID id = repository.saveAndFlush(entry).getId();
             log.debug("Saved vocabulary entry {}", id);
-            return new SaveResult(get(id), true);
+            return new SaveResult(get(id, ownerId), true);
         } catch (DataIntegrityViolationException e) {
             return afterFailedInsert(entry, e);
         }
@@ -72,33 +73,33 @@ public class VocabularyService {
      * deleted between the check above and the insert (foreign key).
      */
     private SaveResult afterFailedInsert(VocabularyEntry entry, DataIntegrityViolationException failure) {
-        var saved = repository.findMeaning(entry.getLemma(), entry.getTargetLanguage(), entry.getTranslation());
+        var saved = repository.findMeaning(entry.getOwnerId(), entry.getLemma(), entry.getTargetLanguage(), entry.getTranslation());
         if (saved.isPresent()) {
-            return new SaveResult(get(saved.get()), false);
+            return new SaveResult(get(saved.get(), entry.getOwnerId()), false);
         }
         if (entry.getSourceDocumentId() == null) {
             throw failure;
         }
-        VocabularyEntry withoutLink = new VocabularyEntry(entry.getOriginalText(), entry.getLemma(), entry.getArticle(),
+        VocabularyEntry withoutLink = new VocabularyEntry(entry.getOwnerId(), entry.getOriginalText(), entry.getLemma(), entry.getArticle(),
                 entry.getPartOfSpeech(), entry.getTranslation(), entry.getTargetLanguage(), entry.getSourceSentence(), null);
-        return new SaveResult(get(repository.saveAndFlush(withoutLink).getId()), true);
+        return new SaveResult(get(repository.saveAndFlush(withoutLink).getId(), entry.getOwnerId()), true);
     }
 
     @Transactional(readOnly = true)
-    public List<VocabularyResponse> list() {
-        return repository.findAllResponses();
+    public List<VocabularyResponse> list(UUID ownerId) {
+        return repository.findAllResponses(ownerId);
     }
 
     @Transactional
-    public void delete(UUID id) {
-        if (repository.deleteEntryById(id) == 0) {
+    public void delete(UUID id, UUID ownerId) {
+        if (repository.deleteEntryById(id, ownerId) == 0) {
             throw new VocabularyException(ErrorCode.VOCABULARY_NOT_FOUND, "Vocabulary entry " + id + " not found");
         }
         log.debug("Deleted vocabulary entry {}", id);
     }
 
-    private VocabularyResponse get(UUID id) {
-        return repository.findResponseById(id).orElseThrow(
+    private VocabularyResponse get(UUID id, UUID ownerId) {
+        return repository.findResponseById(id, ownerId).orElseThrow(
                 () -> new VocabularyException(ErrorCode.VOCABULARY_NOT_FOUND, "Vocabulary entry " + id + " not found"));
     }
 

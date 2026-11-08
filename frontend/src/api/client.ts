@@ -16,6 +16,10 @@ export type ErrorCode =
   | "INVALID_UPLOAD"
   | "UPLOAD_TOO_LARGE"
   | "VOCABULARY_NOT_FOUND"
+  | "UNAUTHENTICATED"
+  | "INVALID_CREDENTIALS"
+  | "EMAIL_TAKEN"
+  | "FORBIDDEN"
   | "INTERNAL_ERROR"
   | "NETWORK_ERROR";
 
@@ -32,15 +36,39 @@ export class ApiError extends Error {
 /** JSON request body, or FormData for uploads (the browser then sets the multipart Content-Type). */
 type Body = object | FormData;
 
-/** Calls the backend. Resolves with the parsed JSON (undefined for 204), rejects with an ApiError. */
-export async function apiRequest<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: Body): Promise<T> {
-  const init: RequestInit = { method };
+type Method = "GET" | "POST" | "PATCH" | "DELETE";
+
+let sessionExpiredListener: (() => void) | null = null;
+
+/** Called when a request is refused because the login ended (expired or invalid token). */
+export function onSessionExpired(listener: (() => void) | null): void {
+  sessionExpiredListener = listener;
+}
+
+/**
+ * The CSRF token Spring Security puts in the (deliberately readable) XSRF-TOKEN cookie. Echoing it in a header
+ * proves the request comes from this page: other sites can't read our cookies.
+ */
+function csrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
+/**
+ * Calls the backend. Resolves with the parsed JSON (undefined for 204), rejects with an ApiError.
+ * The login travels in an HttpOnly cookie that this code never sees; `credentials: "include"` sends it along.
+ */
+export async function apiRequest<T>(method: Method, path: string, body?: Body): Promise<T> {
+  const headers: Record<string, string> = {};
+  const init: RequestInit = { method, credentials: "include", headers };
   if (body instanceof FormData) {
     init.body = body;
   } else if (body !== undefined) {
-    init.headers = { "Content-Type": "application/json" };
+    headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);
   }
+  const token = method === "GET" ? null : csrfToken();
+  if (token) headers["X-XSRF-TOKEN"] = token;
 
   let response: Response;
   try {
@@ -55,5 +83,9 @@ export async function apiRequest<T>(method: "GET" | "POST" | "PATCH" | "DELETE",
 
   // Errors are RFC 9457 problem details with a "code" property; anything else is unexpected.
   const problem = (await response.json().catch(() => null)) as { code?: ErrorCode; detail?: string } | null;
-  throw new ApiError(problem?.code ?? "INTERNAL_ERROR", problem?.detail ?? `HTTP ${response.status}`);
+  const error = new ApiError(problem?.code ?? "INTERNAL_ERROR", problem?.detail ?? `HTTP ${response.status}`);
+  if (error.code === "UNAUTHENTICATED" && !path.startsWith("/api/v1/auth/")) {
+    sessionExpiredListener?.();
+  }
+  throw error;
 }

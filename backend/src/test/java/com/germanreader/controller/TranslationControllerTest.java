@@ -29,7 +29,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import com.germanreader.security.TestAuth;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -38,7 +40,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 @WebMvcTest(controllers = TranslationController.class,
-        properties = "app.cors.allowed-origins=http://localhost:5173")
+        properties = {"app.cors.allowed-origins=http://localhost:5173", "app.auth.allow-generated-secret=true"})
+@Import(TestAuth.WebSecurity.class)
 class TranslationControllerTest {
 
     private static final String URL = "/api/v1/translations";

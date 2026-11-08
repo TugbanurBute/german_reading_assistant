@@ -2,6 +2,7 @@ package com.germanreader.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
@@ -26,7 +27,9 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import com.germanreader.security.TestAuth;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -35,7 +38,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 @WebMvcTest(controllers = VocabularyController.class,
-        properties = "app.cors.allowed-origins=http://localhost:5173")
+        properties = {"app.cors.allowed-origins=http://localhost:5173", "app.auth.allow-generated-secret=true"})
+@Import(TestAuth.WebSecurity.class)
 class VocabularyControllerTest {
 
     private static final String URL = "/api/v1/vocabulary";
@@ -62,7 +66,7 @@ class VocabularyControllerTest {
 
     @Test
     void aNewWordReturns201WithLocationAndTheEntry() throws Exception {
-        given(vocabularyService.save(any())).willReturn(new VocabularyService.SaveResult(ENTRY, true));
+        given(vocabularyService.save(any(), any())).willReturn(new VocabularyService.SaveResult(ENTRY, true));
 
         postJson(VALID_BODY)
                 .andExpect(status().isCreated())
@@ -74,14 +78,14 @@ class VocabularyControllerTest {
                 .andExpect(jsonPath("$.sourceDocumentId").isEmpty());
 
         ArgumentCaptor<SaveVocabularyRequest> captor = ArgumentCaptor.forClass(SaveVocabularyRequest.class);
-        verify(vocabularyService).save(captor.capture());
+        verify(vocabularyService).save(eq(TestAuth.USER_ID), captor.capture());
         // "die" in JSON is the Article enum (its @JsonValue), as in translation responses.
         assertThat(captor.getValue().article()).isEqualTo(Article.DIE);
     }
 
     @Test
     void anAlreadySavedMeaningReturns200WithTheExistingEntry() throws Exception {
-        given(vocabularyService.save(any())).willReturn(new VocabularyService.SaveResult(ENTRY, false));
+        given(vocabularyService.save(any(), any())).willReturn(new VocabularyService.SaveResult(ENTRY, false));
 
         postJson(VALID_BODY)
                 .andExpect(status().isOk())
@@ -91,7 +95,7 @@ class VocabularyControllerTest {
 
     @Test
     void onlyWordTranslationAndLanguageAreRequired() throws Exception {
-        given(vocabularyService.save(any())).willReturn(new VocabularyService.SaveResult(ENTRY, true));
+        given(vocabularyService.save(any(), any())).willReturn(new VocabularyService.SaveResult(ENTRY, true));
 
         postJson("""
                 {"originalText": "schnell", "translation": "quickly", "targetLanguage": "EN"}
@@ -136,7 +140,7 @@ class VocabularyControllerTest {
 
     @Test
     void listReturnsTheEntries() throws Exception {
-        given(vocabularyService.list()).willReturn(List.of(ENTRY));
+        given(vocabularyService.list(TestAuth.USER_ID)).willReturn(List.of(ENTRY));
 
         mockMvc.perform(get(URL))
                 .andExpect(status().isOk())
@@ -149,13 +153,13 @@ class VocabularyControllerTest {
     void deleteReturns204() throws Exception {
         mockMvc.perform(delete(URL + "/" + ID)).andExpect(status().isNoContent());
 
-        verify(vocabularyService).delete(ID);
+        verify(vocabularyService).delete(ID, TestAuth.USER_ID);
     }
 
     @Test
     void deletingAMissingEntryReturns404() throws Exception {
         willThrow(new VocabularyException(ErrorCode.VOCABULARY_NOT_FOUND, "not found"))
-                .given(vocabularyService).delete(ID);
+                .given(vocabularyService).delete(ID, TestAuth.USER_ID);
 
         mockMvc.perform(delete(URL + "/" + ID))
                 .andExpect(status().isNotFound())

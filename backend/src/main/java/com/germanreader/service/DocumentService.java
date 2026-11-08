@@ -23,7 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-/** The reading library. Logs ids and sizes only, never titles or content. */
+/**
+ * The reading library. Every method takes the owner (the logged-in user); another user's text behaves exactly
+ * like a missing one (404). Logs ids and sizes only, never titles or content.
+ */
 @Slf4j
 @Service
 public class DocumentService {
@@ -37,8 +40,8 @@ public class DocumentService {
     }
 
     @Transactional
-    public DocumentResponse create(String title, String content) {
-        ReadingDocument saved = repository.save(new ReadingDocument(title.strip(), normalize(content)));
+    public DocumentResponse create(UUID ownerId, String title, String content) {
+        ReadingDocument saved = repository.save(new ReadingDocument(ownerId, title.strip(), normalize(content)));
         log.debug("Created document {} ({} characters)", saved.getId(), saved.getContent().length());
         return DocumentResponse.from(saved);
     }
@@ -47,7 +50,7 @@ public class DocumentService {
      * Stores a UTF-8 .txt upload, titled after the file name. Not transactional itself: the file is
      * checked first, and only the single insert at the end needs a transaction (create() has one).
      */
-    public DocumentResponse upload(MultipartFile file) {
+    public DocumentResponse upload(UUID ownerId, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw invalidUpload("No file or an empty file");
         }
@@ -63,17 +66,17 @@ public class DocumentService {
         if (content.length() > DocumentLimits.MAX_CONTENT_LENGTH) {
             throw new DocumentException(ErrorCode.UPLOAD_TOO_LARGE, "Upload has " + content.length() + " characters");
         }
-        return create(titleFrom(filename), content);
+        return create(ownerId, titleFrom(filename), content);
     }
 
     @Transactional(readOnly = true)
-    public List<DocumentSummary> list() {
-        return repository.findAllSummaries();
+    public List<DocumentSummary> list(UUID ownerId) {
+        return repository.findAllSummaries(ownerId);
     }
 
     @Transactional(readOnly = true)
-    public DocumentResponse get(UUID id) {
-        return repository.findById(id)
+    public DocumentResponse get(UUID id, UUID ownerId) {
+        return repository.findByIdAndOwnerId(id, ownerId)
                 .map(DocumentResponse::from)
                 .orElseThrow(() -> notFound(id));
     }
@@ -83,19 +86,19 @@ public class DocumentService {
      * Returns the summary: the client already has the content and nothing in it changed.
      */
     @Transactional
-    public DocumentSummary rename(UUID id, String title) {
+    public DocumentSummary rename(UUID id, UUID ownerId, String title) {
         // PostgreSQL stores microseconds; truncating keeps the returned value equal to the stored one.
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
-        if (repository.rename(id, title.strip(), now) == 0) {
+        if (repository.rename(id, ownerId, title.strip(), now) == 0) {
             throw notFound(id);
         }
         log.debug("Renamed document {}", id);
-        return repository.findSummaryById(id).orElseThrow(() -> notFound(id));
+        return repository.findSummaryById(id, ownerId).orElseThrow(() -> notFound(id));
     }
 
     @Transactional
-    public void delete(UUID id) {
-        if (repository.deleteDocumentById(id) == 0) {
+    public void delete(UUID id, UUID ownerId) {
+        if (repository.deleteDocumentById(id, ownerId) == 0) {
             throw notFound(id);
         }
         log.debug("Deleted document {}", id);

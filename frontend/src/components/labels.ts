@@ -114,6 +114,10 @@ export function errorCopy(code: ErrorCode): ErrorCopy {
     case "INVALID_UPLOAD":
     case "UPLOAD_TOO_LARGE": // library and vocabulary codes; the translation endpoint never returns them
     case "VOCABULARY_NOT_FOUND":
+    case "UNAUTHENTICATED": // the app returns to the login screen when this happens
+    case "INVALID_CREDENTIALS":
+    case "EMAIL_TAKEN":
+    case "FORBIDDEN":
     case "INTERNAL_ERROR":
       return { title: "Something went wrong", body: "Try again in a moment.", canRetry: true };
   }
