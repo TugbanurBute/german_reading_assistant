@@ -3,6 +3,7 @@ import { ApiError } from "../api/client.ts";
 import type { VocabularyEntry } from "../api/vocabulary.ts";
 import type { VocabularyStore } from "../hooks/useVocabulary.ts";
 import { ARTICLE_STYLES, partOfSpeechLabel, vocabularyErrorMessage } from "./labels.ts";
+import { LearningStats } from "./LearningStats.tsx";
 
 interface Props {
   vocabulary: VocabularyStore;
@@ -45,6 +46,8 @@ export function MyWordsScreen({ vocabulary, onBack }: Props) {
       </button>
       <h1 className="font-serif text-xl font-medium">My words</h1>
       <p className="mt-1 text-[13px] text-muted">Words you saved while reading, newest first.</p>
+
+      <LearningStats />
 
       {/* Always rendered, so screen readers announce messages that appear later. */}
       <div role="status" className="empty:hidden mt-4 text-[13px]">

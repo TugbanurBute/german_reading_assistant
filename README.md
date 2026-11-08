@@ -40,6 +40,7 @@ frontend/  React 19 + TypeScript + Vite 8 + Tailwind CSS 4
 | Gemini key  | –       | only with `TRANSLATION_PROVIDER=gemini`                 |
 | Redis       | 7+      | the translation rate limit (optional: without it translations are not limited) |
 | RabbitMQ    | 4+      | document analysis: word, character and paragraph counts (optional: without it documents stay "Analysing…" and are still readable) |
+| Kafka       | 4+ (KRaft) | learning statistics on My words (optional: without it saved words are still saved; their events wait in PostgreSQL) |
 
 Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Windows).
 
@@ -57,7 +58,7 @@ Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Wi
    Redis for the rate limit (optional, see [Rate limit](#rate-limit)):
 
    ```bash
-   docker compose up -d redis rabbitmq
+   docker compose up -d redis rabbitmq kafka
    ```
 
 2. **Backend** — on :8080:
@@ -109,6 +110,9 @@ real environment variables win over the file. All variables are listed in
 | `RABBITMQ_HOST`, `RABBITMQ_PORT` | no      | `localhost`, `5672`                              | RabbitMQ for document analysis |
 | `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD` | no | `guest`, `guest`                              | RabbitMQ credentials (`guest` only works on localhost) |
 | `DOCUMENT_PROCESSING_ENABLED` | no         | `true`                                           | `false`: no messages are published or consumed |
+| `KAFKA_BOOTSTRAP_SERVERS` | no             | `localhost:9092`                                 | Kafka for vocabulary events |
+| `VOCABULARY_EVENTS_ENABLED` | no           | `true`                                           | `false`: no vocabulary events are published or consumed |
+| `ANALYTICS_TIME_ZONE`  | no                | `UTC`                                            | Time zone that decides the day a saved word counts for, and "today" (e.g. `Europe/Istanbul`) |
 | `SERVER_PORT`          | no                | `8080`                                           | |
 
 The `local` profile also provides defaults for `DB_URL`, `DB_USERNAME`, `CORS_ALLOWED_ORIGINS`
@@ -178,6 +182,9 @@ mock provider. It works in its own schema, `it_test`, and never touches your dat
 `RedisRateLimiterIT` runs against a real Redis on `REDIS_HOST:REDIS_PORT` and is skipped when none is running.
 `RabbitMqDocumentProcessingIT` does the same with RabbitMQ on `RABBITMQ_HOST:RABBITMQ_PORT`. All other tests mock
 RabbitMQ (`src/test/resources/application.properties` switches document processing off).
+`KafkaAnalyticsIT` starts its own Kafka broker inside the test JVM (`spring-kafka-test`), so it always runs and
+needs no Docker. Integration tests run with an English locale: on a Turkish system the embedded broker fails
+otherwise (`"classic".toUpperCase()` becomes `CLASSİC`).
 
 ```bash
 cd frontend
@@ -315,6 +322,19 @@ Rules:
   - "Bank → bench" and "Bank → bank" are two entries.
   - Saving "Bank → bench" again, from any sentence, returns the existing entry unchanged.
 - **Deleted texts:** deleting a library text keeps its words; their `sourceDocumentId` and `sourceDocumentTitle` become null. A word saved with the id of a text that no longer exists is stored without the link.
+
+### Learning statistics (your own words only)
+
+`GET /api/v1/analytics/vocabulary` → `200`:
+
+```json
+{"timeZone": "UTC", "today": 3, "lastSevenDays": 10,
+ "days": [{"date": "2026-11-03", "count": 1}, "…", {"date": "2026-11-09", "count": 3}]}
+```
+
+`days` holds the last 7 days, oldest first, today last. Days without saved words count `0`. Each newly saved word
+(not a returned duplicate) sends a `VocabularyWordSaved` event to the Kafka topic `vocabulary.events`; the consumer
+group `learning-analytics` counts it once per day in `ANALYTICS_TIME_ZONE`. Counts appear a few seconds after saving.
 
 Errors are RFC 9457 problem details with a stable `code`:
 

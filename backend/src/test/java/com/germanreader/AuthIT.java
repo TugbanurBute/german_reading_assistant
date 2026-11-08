@@ -175,7 +175,7 @@ class AuthIT {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/v1/documents", "/api/v1/vocabulary", "/api/v1/auth/me"})
+    @ValueSource(strings = {"/api/v1/documents", "/api/v1/vocabulary", "/api/v1/auth/me", "/api/v1/analytics/vocabulary"})
     void withoutATokenTheApiAnswers401(String path) throws Exception {
         mockMvc.perform(get(path))
                 .andExpect(status().isUnauthorized())

@@ -21,14 +21,13 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "vocabulary_entry")
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED) // required by JPA, not for application code
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class VocabularyEntry {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    /** The user the word belongs to; null only for words from before accounts existed (see V4). */
     @Column(updatable = false)
     private UUID ownerId;
 
@@ -56,12 +55,17 @@ public class VocabularyEntry {
     @Column(updatable = false, length = 1000)
     private String sourceSentence;
 
-    /** A plain id, not a JPA relation: the database clears it when the text is deleted. */
     @Column(updatable = false)
     private UUID sourceDocumentId;
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
+
+    @Column(nullable = false, updatable = false)
+    private UUID savedEventId = UUID.randomUUID();
+
+    @Column(insertable = false, updatable = false)
+    private Instant eventPublishedAt;
 
     public VocabularyEntry(UUID ownerId, String originalText, String lemma, Article article, PartOfSpeech partOfSpeech,
                            String translation, TargetLanguage targetLanguage, String sourceSentence,
@@ -75,7 +79,6 @@ public class VocabularyEntry {
         this.targetLanguage = targetLanguage;
         this.sourceSentence = sourceSentence;
         this.sourceDocumentId = sourceDocumentId;
-        // PostgreSQL stores microseconds; truncating keeps the returned value equal to the stored one.
         this.createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
     }
 }

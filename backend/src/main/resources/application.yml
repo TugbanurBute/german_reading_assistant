@@ -8,6 +8,21 @@ spring:
     password: ${RABBITMQ_PASSWORD:guest}
     # The relay waits for RabbitMQ's confirm before marking a document's message as published.
     publisher-confirm-type: simple
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      properties:
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: record
+    admin:
+      operation-timeout: 5s
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -52,6 +67,13 @@ app:
       enabled: ${TRANSLATION_RATE_LIMIT_ENABLED:true}
       limit: ${TRANSLATION_RATE_LIMIT:10}
       window: ${TRANSLATION_RATE_WINDOW:60s}
+  vocabulary-events:
+    # false: no events are published or consumed; statistics stay as they are.
+    enabled: ${VOCABULARY_EVENTS_ENABLED:true}
+    relay-interval: PT2S
+  analytics:
+    # The time zone that decides which day a saved word counts for, and what "today" is.
+    time-zone: ${ANALYTICS_TIME_ZONE:UTC}
   document-processing:
     # false: no messages are published or consumed; documents stay PENDING (reading is unaffected).
     enabled: ${DOCUMENT_PROCESSING_ENABLED:true}

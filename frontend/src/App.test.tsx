@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.tsx";
 import { clearTranslationCache } from "./api/translations.ts";
+import type { VocabularyStats } from "./api/analytics.ts";
 import type { SavedDocument } from "./api/documents.ts";
 import { PROCESSING_POLL_MS } from "./components/LibraryScreen.tsx";
 import type { TranslationRequest } from "./api/types.ts";
@@ -174,6 +175,15 @@ function fakeAuth(path: string, init: RequestInit | undefined): Response {
   return json(loggedIn);
 }
 
+/** The backend's learning statistics for the logged-in user: 3–9 November 2026, today last. */
+function weekOf(counts: number[]): VocabularyStats {
+  const days = counts.map((count, i) => ({ date: `2026-11-0${i + 3}`, count }));
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  return { timeZone: "UTC", today: counts.at(-1)!, lastSevenDays: total, days };
+}
+
+let stats: VocabularyStats = weekOf([0, 0, 0, 0, 0, 0, 0]);
+
 const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
@@ -182,6 +192,7 @@ beforeEach(() => {
   library = [];
   nextId = 1;
   vocabulary = [];
+  stats = weekOf([0, 0, 0, 0, 0, 0, 0]);
   loggedIn = ANNA;
   for (const email of Object.keys(PASSWORDS)) if (email !== ANNA.email) delete PASSWORDS[email];
   fetchMock.mockReset();
@@ -192,6 +203,7 @@ beforeEach(() => {
     if (!loggedIn) return json({ code: "UNAUTHENTICATED", detail: "Please log in." }, 401);
     if (path === "/api/v1/translations") return fakeBackend(JSON.parse(init?.body as string) as TranslationRequest);
     if (path.startsWith("/api/v1/vocabulary")) return fakeVocabulary(path, init);
+    if (path === "/api/v1/analytics/vocabulary") return json(stats);
     return fakeLibrary(path, init);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -498,7 +510,15 @@ describe("my words", () => {
     const user = userEvent.setup();
     render(<App />);
     const myWords = await screen.findByRole("button", { name: "My words" });
-    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const backend = fetchMock.getMockImplementation()!;
+    let failed = false;
+    fetchMock.mockImplementation(async (url, init) => {
+      if (!failed && new URL(url as string).pathname === "/api/v1/vocabulary") {
+        failed = true;
+        throw new TypeError("Failed to fetch");
+      }
+      return backend(url, init);
+    });
 
     await user.click(myWords);
     expect(await screen.findByText("Couldn't load your words")).toBeInTheDocument();
@@ -707,6 +727,78 @@ describe("preferences", () => {
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem("lesehilfe.theme")).toBe('"dark"');
+  });
+});
+
+describe("learning statistics", () => {
+  async function openMyWordsWith(week: VocabularyStats) {
+    stats = week;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "My words" }));
+    return screen.findByRole("region", { name: "Your week" });
+  }
+
+  it("shows today's count and one bar per day of the last week", async () => {
+    const section = await openMyWordsWith(weekOf([1, 0, 0, 4, 0, 2, 3]));
+
+    expect(await within(section).findByText("3")).toBeInTheDocument();
+    expect(section).toHaveTextContent("words today");
+    expect(section).toHaveTextContent("10 words in the last 7 days");
+    const days = within(within(section).getByRole("list", { name: "Words saved per day" })).getAllByRole("listitem");
+    expect(days).toHaveLength(7);
+    expect(days[0]).toHaveTextContent("Tuesday, November 3: 1 word");
+    expect(days[6]).toHaveTextContent("Monday, November 9: 3 words");
+  });
+
+  it("shows an empty state when nothing was saved this week", async () => {
+    const section = await openMyWordsWith(weekOf([0, 0, 0, 0, 0, 0, 0]));
+
+    expect(await within(section).findByText(/No words saved in the last 7 days yet/)).toBeInTheDocument();
+    expect(within(section).queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  it("shows an error with a retry, without hiding the saved words", async () => {
+    savedWord({});
+    const backend = fetchMock.getMockImplementation()!;
+    let failed = false;
+    fetchMock.mockImplementation(async (url, init) => {
+      if (!failed && new URL(url as string).pathname === "/api/v1/analytics/vocabulary") {
+        failed = true;
+        return json({ code: "INTERNAL_ERROR", detail: "Oops." }, 500);
+      }
+      return backend(url, init);
+    });
+    stats = weekOf([0, 0, 0, 0, 0, 0, 2]);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "My words" }));
+    const section = await screen.findByRole("region", { name: "Your week" });
+
+    expect(await within(section).findByText(/Couldn't load your statistics/)).toBeInTheDocument();
+    expect(await screen.findByRole("list", { name: "Saved words" })).toBeInTheDocument();
+
+    await user.click(within(section).getByRole("button", { name: "Try again" }));
+    expect(await within(section).findByText("2 words in the last 7 days")).toBeInTheDocument();
+  });
+
+  it("shows a loading state first", async () => {
+    stats = weekOf([0, 0, 0, 0, 0, 0, 1]);
+    // Hold the statistics response back until the loading state has been checked.
+    const backend = fetchMock.getMockImplementation()!;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    fetchMock.mockImplementation(async (url, init) => {
+      if (new URL(url as string).pathname === "/api/v1/analytics/vocabulary") await held;
+      return backend(url, init);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "My words" }));
+
+    expect(await screen.findByText("Loading your statistics…")).toBeInTheDocument();
+    release();
+    expect(await screen.findByText(/1 word in the last 7 days/)).toBeInTheDocument();
   });
 });
 
