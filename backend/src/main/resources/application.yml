@@ -1,6 +1,13 @@
 spring:
   application:
     name: german-reader
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Short, so an unreachable Redis costs a translation at most half a second (then fail-open).
+      timeout: 500ms
+      connect-timeout: 500ms
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -32,6 +39,12 @@ app:
     token-ttl: ${AUTH_TOKEN_TTL:8h}
     # Secure cookies need HTTPS; only the local profile turns this off.
     cookie-secure: ${AUTH_COOKIE_SECURE:true}
+  rate-limit:
+    translations:
+      # Per user, fixed window: at most `limit` translation requests per `window`.
+      enabled: ${TRANSLATION_RATE_LIMIT_ENABLED:true}
+      limit: ${TRANSLATION_RATE_LIMIT:10}
+      window: ${TRANSLATION_RATE_WINDOW:60s}
 
 translation:
   provider: ${TRANSLATION_PROVIDER}

@@ -698,6 +698,26 @@ describe("preferences", () => {
   });
 });
 
+describe("translation limit", () => {
+  it("explains the limit in the popup, and Try again works once the wait is over", async () => {
+    const user = await startReadingSample();
+    fetchMock.mockResolvedValueOnce(
+      json({ code: "TRANSLATION_RATE_LIMITED", detail: "Limit reached.", retryAfterSeconds: 42 }, 429),
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[0]!);
+
+    const popup = await screen.findByRole("dialog", { name: "Translation of “Bank”" });
+    expect(await within(popup).findByText("Translation limit reached")).toBeInTheDocument();
+    expect(within(popup).getByText(/You can continue in 42 seconds/)).toBeInTheDocument();
+    // Still logged in: a 429 is not an ended session.
+    expect(screen.queryByRole("heading", { name: "Log in" })).not.toBeInTheDocument();
+
+    await user.click(within(popup).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("bench")).toBeInTheDocument();
+  });
+});
+
 describe("accounts", () => {
   const field = (name: string) => screen.getByLabelText(name, { exact: false });
 

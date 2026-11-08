@@ -4,6 +4,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -24,6 +26,10 @@ import com.germanreader.dto.grammar.GrammaticalNumber;
 import com.germanreader.dto.grammar.NounGrammar;
 import com.germanreader.exception.ErrorCode;
 import com.germanreader.exception.TranslationException;
+import com.germanreader.ratelimit.RateLimitExceededException;
+import com.germanreader.ratelimit.TranslationRateLimiter;
+import java.time.Duration;
+import org.mockito.InOrder;
 import com.germanreader.service.TranslationService;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -51,6 +57,9 @@ class TranslationControllerTest {
 
     @MockitoBean
     private TranslationService translationService;
+
+    @MockitoBean
+    private TranslationRateLimiter rateLimiter;
 
     private ResultActions postJson(String body) throws Exception {
         return mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(body));
@@ -197,6 +206,44 @@ class TranslationControllerTest {
             mockMvc.perform(post(URL).contentType(MediaType.TEXT_PLAIN).content("Haus"))
                     .andExpect(status().isUnsupportedMediaType())
                     .andExpect(jsonPath("$.code").value("REQUEST_ERROR"));
+        }
+    }
+
+    @Nested
+    class RateLimit {
+
+        private static final String VALID = wordRequest("Haus", "Das Haus ist alt.");
+
+        @Test
+        void isCheckedForTheLoggedInUserBeforeTranslating() throws Exception {
+            given(translationService.translate(any())).willReturn(null);
+
+            postJson(VALID).andExpect(status().isOk());
+
+            InOrder order = inOrder(rateLimiter, translationService);
+            order.verify(rateLimiter).check(TestAuth.USER_ID);
+            order.verify(translationService).translate(any());
+        }
+
+        @Test
+        void aReachedLimitIs429WithRetryAfterAndNothingIsTranslated() throws Exception {
+            willThrow(new RateLimitExceededException(Duration.ofMillis(41_500))).given(rateLimiter).check(TestAuth.USER_ID);
+
+            postJson(VALID)
+                    .andExpect(status().isTooManyRequests())
+                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "42"))
+                    .andExpect(jsonPath("$.code").value("TRANSLATION_RATE_LIMITED"))
+                    .andExpect(jsonPath("$.retryAfterSeconds").value(42))
+                    .andExpect(jsonPath("$.detail").value(ErrorCode.TRANSLATION_RATE_LIMITED.message()));
+
+            verifyNoInteractions(translationService);
+        }
+
+        @Test
+        void invalidRequestsAreRejectedWithoutCountingThem() throws Exception {
+            postJson("{}").andExpect(status().isBadRequest());
+
+            verifyNoInteractions(rateLimiter);
         }
     }
 

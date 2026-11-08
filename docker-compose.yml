@@ -1,0 +1,13 @@
+# Local Redis for the translation rate limit: docker compose up -d redis
+# Counters only live for one window, so nothing is persisted to disk.
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

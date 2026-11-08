@@ -42,6 +42,12 @@
             <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
         </dependency>
 
+        <!-- Redis: per-user rate limit counters for translations -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Persistence: JPA/Hibernate, PostgreSQL driver, Flyway migrations -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

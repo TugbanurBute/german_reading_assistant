@@ -62,6 +62,16 @@ describe("labels", () => {
     expect(errorCopy("VALIDATION_ERROR").canRetry).toBe(false);
   });
 
+  it("explains the translation limit with the wait, and allows a retry", () => {
+    expect(errorCopy("TRANSLATION_RATE_LIMITED", 42)).toEqual({
+      title: "Translation limit reached",
+      body: "You've translated a lot in a short time. You can continue in 42 seconds.",
+      canRetry: true,
+    });
+    expect(errorCopy("TRANSLATION_RATE_LIMITED", 1).body).toContain("in 1 second.");
+    expect(errorCopy("TRANSLATION_RATE_LIMITED").body).toBe("You've translated a lot in a short time. Please wait a moment.");
+  });
+
   it("tells a retired model and a rejected key apart from an outage, without a retry", () => {
     expect(errorCopy("PROVIDER_UNAVAILABLE")).toMatchObject({ title: "Translation service unavailable", canRetry: true });
     expect(errorCopy("PROVIDER_MODEL_UNAVAILABLE")).toMatchObject({ title: "Translation model not available", canRetry: false });

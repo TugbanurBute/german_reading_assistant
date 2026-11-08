@@ -26,6 +26,9 @@ public enum ErrorCode {
 
     VOCABULARY_NOT_FOUND(HttpStatus.NOT_FOUND, "The saved word does not exist. It may have been deleted."),
 
+    TRANSLATION_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS,
+            "You have reached the translation limit. Please wait a moment before translating more."),
+
     UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "Please log in."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "The email or password is incorrect."),
     EMAIL_TAKEN(HttpStatus.CONFLICT, "An account with this email already exists."),

@@ -1,3 +1,4 @@
+import type { ApiError } from "../api/client.ts";
 import type { TranslationResponse } from "../api/types.ts";
 import type { TranslationState } from "../hooks/useTranslation.ts";
 import { ARTICLE_STYLES, errorCopy, grammarRows, partOfSpeechLabel } from "./labels.ts";
@@ -6,7 +7,7 @@ export function TranslationCard({ state, onRetry }: { state: TranslationState; o
   return (
     <div aria-live="polite">
       {state.status === "loading" && <Skeleton />}
-      {state.status === "error" && <ErrorView code={state.error.code} onRetry={onRetry} />}
+      {state.status === "error" && <ErrorView error={state.error} onRetry={onRetry} />}
       {state.status === "success" &&
         (state.data.translationType === "WORD" ? <WordResult data={state.data} /> : <SentenceResult data={state.data} />)}
     </div>
@@ -68,8 +69,8 @@ function SentenceResult({ data }: { data: TranslationResponse }) {
   );
 }
 
-function ErrorView({ code, onRetry }: { code: Parameters<typeof errorCopy>[0]; onRetry: () => void }) {
-  const copy = errorCopy(code);
+function ErrorView({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
+  const copy = errorCopy(error.code, error.retryAfterSeconds);
   return (
     <div className="text-[13px]">
       <p className="font-medium">{copy.title}</p>

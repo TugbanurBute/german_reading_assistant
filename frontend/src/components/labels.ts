@@ -66,8 +66,17 @@ export interface ErrorCopy {
   canRetry: boolean;
 }
 
-export function errorCopy(code: ErrorCode): ErrorCopy {
+/** @param retryAfterSeconds for TRANSLATION_RATE_LIMITED: how long until translating works again */
+export function errorCopy(code: ErrorCode, retryAfterSeconds?: number): ErrorCopy {
   switch (code) {
+    case "TRANSLATION_RATE_LIMITED":
+      return {
+        title: "Translation limit reached",
+        body: retryAfterSeconds
+          ? `You've translated a lot in a short time. You can continue in ${retryAfterSeconds} ${retryAfterSeconds === 1 ? "second" : "seconds"}.`
+          : "You've translated a lot in a short time. Please wait a moment.",
+        canRetry: true,
+      };
     case "MOCK_TRANSLATION_NOT_FOUND":
       return {
         title: "No sample translation for this",

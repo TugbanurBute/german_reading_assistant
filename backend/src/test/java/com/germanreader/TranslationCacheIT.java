@@ -35,7 +35,8 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(properties = {
         "translation.provider=mock",
         "spring.flyway.schemas=" + TranslationCacheIT.SCHEMA,
-        "spring.datasource.hikari.schema=" + TranslationCacheIT.SCHEMA
+        "spring.datasource.hikari.schema=" + TranslationCacheIT.SCHEMA,
+        "app.rate-limit.translations.enabled=false" // these tests are about the cache, not the limit
 })
 @ActiveProfiles("local")
 @AutoConfigureMockMvc

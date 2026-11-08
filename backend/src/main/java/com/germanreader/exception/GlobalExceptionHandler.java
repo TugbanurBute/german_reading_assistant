@@ -1,5 +1,6 @@
 package com.germanreader.exception;
 
+import com.germanreader.ratelimit.RateLimitExceededException;
 import java.util.Arrays;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -61,6 +62,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         // The message holds ids and reasons only, never document text.
         log.debug("Document request rejected with {}: {}", ex.getErrorCode(), ex.getMessage());
         return problem(ex.getErrorCode(), null);
+    }
+
+    /** 429 with Retry-After (seconds until the next window), also in the body for the frontend. */
+    @ExceptionHandler(RateLimitExceededException.class)
+    ResponseEntity<Object> handleRateLimit(RateLimitExceededException ex) {
+        ErrorCode code = ErrorCode.TRANSLATION_RATE_LIMITED;
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(code.status(), code.message());
+        problem.setProperty("code", code.name());
+        problem.setProperty("retryAfterSeconds", ex.retryAfterSeconds());
+        return ResponseEntity.status(code.status())
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.retryAfterSeconds()))
+                .body(problem);
     }
 
     @ExceptionHandler(AuthException.class)

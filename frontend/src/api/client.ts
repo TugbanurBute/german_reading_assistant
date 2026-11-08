@@ -20,16 +20,20 @@ export type ErrorCode =
   | "INVALID_CREDENTIALS"
   | "EMAIL_TAKEN"
   | "FORBIDDEN"
+  | "TRANSLATION_RATE_LIMITED"
   | "INTERNAL_ERROR"
   | "NETWORK_ERROR";
 
 export class ApiError extends Error {
   readonly code: ErrorCode;
+  /** Set for TRANSLATION_RATE_LIMITED: seconds until translating works again. */
+  readonly retryAfterSeconds?: number;
 
-  constructor(code: ErrorCode, message: string) {
+  constructor(code: ErrorCode, message: string, retryAfterSeconds?: number) {
     super(message);
     this.name = "ApiError";
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -82,8 +86,14 @@ export async function apiRequest<T>(method: Method, path: string, body?: Body): 
   }
 
   // Errors are RFC 9457 problem details with a "code" property; anything else is unexpected.
-  const problem = (await response.json().catch(() => null)) as { code?: ErrorCode; detail?: string } | null;
-  const error = new ApiError(problem?.code ?? "INTERNAL_ERROR", problem?.detail ?? `HTTP ${response.status}`);
+  const problem = (await response.json().catch(() => null)) as
+    | { code?: ErrorCode; detail?: string; retryAfterSeconds?: number }
+    | null;
+  const error = new ApiError(
+    problem?.code ?? "INTERNAL_ERROR",
+    problem?.detail ?? `HTTP ${response.status}`,
+    problem?.retryAfterSeconds,
+  );
   if (error.code === "UNAUTHENTICATED" && !path.startsWith("/api/v1/auth/")) {
     sessionExpiredListener?.();
   }

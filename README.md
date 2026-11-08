@@ -21,7 +21,7 @@ Every user has an account. Texts and saved words belong to their owner and are i
 > **Before using it anywhere but your own machine:**
 > - Set `JWT_SECRET`.
 > - Serve it over HTTPS (the login cookie is `Secure` outside the `local` profile).
-> - Add rate limiting for login and registration, which the app doesn't do yet.
+> - Add rate limiting for login and registration, which the app doesn't do yet (only translations are limited).
 
 ## Layout
 
@@ -38,6 +38,7 @@ frontend/  React 19 + TypeScript + Vite 8 + Tailwind CSS 4
 | Node.js     | 22.12+  | frontend                                                |
 | PostgreSQL  | 15+     | running the backend and `./mvnw verify` (not for `./mvnw test`) |
 | Gemini key  | –       | only with `TRANSLATION_PROVIDER=gemini`                 |
+| Redis       | 7+      | the translation rate limit (optional: without it translations are not limited) |
 
 Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Windows).
 
@@ -51,6 +52,12 @@ Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Wi
    ```
 
    Flyway creates the table on the first start.
+
+   Redis for the rate limit (optional, see [Rate limit](#rate-limit)):
+
+   ```bash
+   docker compose up -d redis
+   ```
 
 2. **Backend** — on :8080:
 
@@ -94,6 +101,10 @@ real environment variables win over the file. All variables are listed in
 | `JWT_SECRET`           | yes, outside `local` | at least 32 random bytes                      | Signs login tokens. Without it the `local` profile uses a random key (everyone logs in again after a restart); other profiles refuse to start |
 | `AUTH_TOKEN_TTL`       | no                | `8h`                                             | How long a login lasts |
 | `AUTH_COOKIE_SECURE`   | no                | `true` (`false` in `local`)                      | Send the login cookie over HTTPS only |
+| `REDIS_HOST`, `REDIS_PORT` | no            | `localhost`, `6379`                              | Redis for the rate limit |
+| `TRANSLATION_RATE_LIMIT` | no              | `10`                                             | Translation requests per user per window |
+| `TRANSLATION_RATE_WINDOW` | no             | `60s`                                            | Window length |
+| `TRANSLATION_RATE_LIMIT_ENABLED` | no      | `true`                                           | `false` switches the limit off |
 | `SERVER_PORT`          | no                | `8080`                                           | |
 
 The `local` profile also provides defaults for `DB_URL`, `DB_USERNAME`, `CORS_ALLOWED_ORIGINS`
@@ -160,6 +171,7 @@ cd backend
 
 `./mvnw verify` uses the `local` profile (so it needs `backend/.env` or the DB variables) and the
 mock provider. It works in its own schema, `it_test`, and never touches your data or calls Gemini.
+`RedisRateLimiterIT` runs against a real Redis on `REDIS_HOST:REDIS_PORT` and is skipped when none is running.
 
 ```bash
 cd frontend
@@ -213,6 +225,37 @@ Everything except registration, login and logout needs a login (translations inc
 
 A successful answer contains `translation`, `lemma`, `partOfSpeech`, a `grammar` object whose shape
 depends on `grammar.kind` (`NOUN`, `VERB`, `OTHER`), and `sentenceTranslation`.
+
+### Rate limit
+
+Each user may send `TRANSLATION_RATE_LIMIT` translation requests (default 10) per `TRANSLATION_RATE_WINDOW`
+(default 60 s). Further requests get:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+
+{"code": "TRANSLATION_RATE_LIMITED", "retryAfterSeconds": 42, "detail": "You have reached the translation limit. …"}
+```
+
+- **Where:** first thing in `TranslationController`, keyed by the user id from the verified token. That's before the
+  PostgreSQL cache, and before any Gemini call. Every translation request counts, cache hits included.
+- **How (fixed window):** windows are aligned to the clock, so 12:00:00–12:00:59 is one window. Each user has one
+  Redis key per window, `rate:translations:<userId>:<window number>`.
+  - A Lua script runs `INCR` and, on the first request of a window, `PEXPIRE`, in one atomic step.
+  - As two separate calls, a crash in between could leave a counter that never expires.
+  - Old keys disappear on their own.
+- **Trade-offs:**
+  - It's simple, O(1) per user, and correct with several backend instances.
+  - Around a window boundary a user can get up to twice the limit (10 at 12:00:59, 10 more at 12:01:00).
+  - A sliding window or token bucket would smooth that out, at the cost of more code. To protect a Gemini quota,
+    the burst is acceptable.
+- **If Redis is down, translations are allowed (fail-open).**
+  - The limit is a safeguard, and its outage shouldn't stop everyone from reading. Redis has a 500 ms timeout, so
+    an outage costs each request at most half a second.
+  - The outage is logged once (WARN), and so is the recovery (INFO).
+  - Meanwhile only the login requirement, the translation cache and Gemini's own quota protect the API key.
+  - Failing closed would be the other choice: safer for the quota, but nobody could translate while Redis is down.
 
 ### Reading library (your own texts only)
 
@@ -273,6 +316,7 @@ Errors are RFC 9457 problem details with a stable `code`:
 | 403 | `FORBIDDEN` (missing or wrong CSRF token) |
 | 404 | `MOCK_TRANSLATION_NOT_FOUND`, `DOCUMENT_NOT_FOUND`, `VOCABULARY_NOT_FOUND` (also for other users' resources) |
 | 409 | `EMAIL_TAKEN` |
+| 429 | `TRANSLATION_RATE_LIMITED` (with `Retry-After`) |
 | 413 | `UPLOAD_TOO_LARGE` |
 | 502 | `PROVIDER_INVALID_RESPONSE` |
 | 503 | `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_MODEL_UNAVAILABLE`, `PROVIDER_REJECTED` |
