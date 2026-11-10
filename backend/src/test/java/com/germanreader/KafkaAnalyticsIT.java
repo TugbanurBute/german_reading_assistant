@@ -145,16 +145,16 @@ class KafkaAnalyticsIT {
 
     @Test
     void unreadableAndRepeatedlyFailingEventsEndInTheDeadLetterTopic() throws Exception {
-        VocabularyWordSaved forUnknownUser =
-                new VocabularyWordSaved(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), Instant.now());
+        VocabularyWordSaved alwaysFailing =
+                new VocabularyWordSaved(UUID.randomUUID(), UUID.randomUUID(), user, Instant.parse("+5874898-06-01T12:00:00Z"));
         String unreadable = "not an event " + UUID.randomUUID();
 
         kafka.send(AnalyticsConfig.TOPIC, user.toString(), unreadable).join();
-        publish(forUnknownUser);
+        publish(alwaysFailing);
 
         List<String> deadLetters = readDeadLetters(2);
-        assertThat(deadLetters).contains(unreadable, jsonMapper.writeValueAsString(forUnknownUser));
-        assertThat(processed(forUnknownUser.eventId())).isFalse();
+        assertThat(deadLetters).contains(unreadable, jsonMapper.writeValueAsString(alwaysFailing));
+        assertThat(processed(alwaysFailing.eventId())).isFalse();
 
         VocabularyWordSaved next = new VocabularyWordSaved(UUID.randomUUID(), UUID.randomUUID(), user, Instant.now());
         publish(next);

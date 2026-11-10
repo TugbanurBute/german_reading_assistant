@@ -24,3 +24,7 @@ npm-debug.log*
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+
+backups/
+*.dump
+*.dump.partial

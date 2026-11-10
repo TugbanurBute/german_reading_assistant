@@ -20,6 +20,8 @@ function authErrorMessage(code: ErrorCode): string {
       return "Can't reach the server. Check that the backend is running.";
     case "FORBIDDEN":
       return "The request was refused. Reload the page and try again.";
+    case "AUTH_RATE_LIMITED":
+      return "Too many attempts. Please wait a few minutes and try again.";
     default:
       return "Something went wrong. Try again in a moment.";
   }

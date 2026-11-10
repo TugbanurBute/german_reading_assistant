@@ -1,7 +1,9 @@
 package com.germanreader.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
+import com.germanreader.ratelimit.ProviderCallBudget;
 import com.germanreader.service.translation.TranslationProvider;
 import com.germanreader.service.translation.gemini.GeminiProperties;
 import com.germanreader.service.translation.gemini.GeminiTranslationProvider;
@@ -14,15 +16,12 @@ import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration;
 
-/**
- * Verifies which beans exist for each {@code translation.provider} value, using a minimal context
- * (Jackson + validation + our provider config). Creating a Gemini {@link Client} makes no network call.
- */
 class TranslationProviderConfigTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class, ValidationAutoConfiguration.class))
-            .withUserConfiguration(TranslationProviderConfig.class);
+            .withUserConfiguration(TranslationProviderConfig.class)
+            .withBean(ProviderCallBudget.class, () -> mock(ProviderCallBudget.class));
 
     @Test
     void mockModeCreatesOnlyTheMockProviderAndNoGeminiBeans() {
@@ -31,7 +30,6 @@ class TranslationProviderConfigTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).getBean(TranslationProvider.class).isInstanceOf(MockTranslationProvider.class);
-                    // Nothing that could reach Gemini exists in mock mode.
                     assertThat(context).doesNotHaveBean(Client.class);
                     assertThat(context).doesNotHaveBean(GeminiProperties.class);
                     assertThat(context).doesNotHaveBean(GeminiTranslationProvider.class);

@@ -4,9 +4,8 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME:guest}
-    password: ${RABBITMQ_PASSWORD:guest}
-    # The relay waits for RabbitMQ's confirm before marking a document's message as published.
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
     publisher-confirm-type: simple
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -92,6 +91,17 @@ app:
       enabled: ${TRANSLATION_RATE_LIMIT_ENABLED:true}
       limit: ${TRANSLATION_RATE_LIMIT:10}
       window: ${TRANSLATION_RATE_WINDOW:60s}
+    auth:
+      enabled: ${AUTH_RATE_LIMIT_ENABLED:true}
+      login-limit: ${LOGIN_RATE_LIMIT:10}
+      login-window: ${LOGIN_RATE_WINDOW:5m}
+      register-limit: ${REGISTER_RATE_LIMIT:5}
+      register-window: ${REGISTER_RATE_WINDOW:1h}
+      client-ip-header: ${CLIENT_IP_HEADER:}
+  quota:
+    enabled: ${QUOTAS_ENABLED:true}
+    translations-per-user-per-day: ${TRANSLATION_DAILY_LIMIT:200}
+    provider-calls-per-day: ${GEMINI_DAILY_CALL_LIMIT:500}
   vocabulary-events:
     # false: no events are published or consumed; statistics stay as they are.
     enabled: ${VOCABULARY_EVENTS_ENABLED:true}

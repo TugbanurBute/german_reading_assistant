@@ -1,18 +1,28 @@
 package com.germanreader.ratelimit;
 
+import com.germanreader.exception.ErrorCode;
 import java.time.Duration;
 
-/** The user used up this window's translations; {@code retryAfter} is the time until the next window. */
+
 public class RateLimitExceededException extends RuntimeException {
 
+    private final ErrorCode errorCode;
     private final Duration retryAfter;
 
     public RateLimitExceededException(Duration retryAfter) {
-        super("Translation rate limit reached");
+        this(ErrorCode.TRANSLATION_RATE_LIMITED, retryAfter);
+    }
+
+    public RateLimitExceededException(ErrorCode errorCode, Duration retryAfter) {
+        super(errorCode.name());
+        this.errorCode = errorCode;
         this.retryAfter = retryAfter;
     }
 
-    /** Whole seconds, rounded up, never less than 1: the value of the Retry-After header. */
+    public ErrorCode getErrorCode() {
+        return errorCode;
+    }
+
     public long retryAfterSeconds() {
         return Math.max(1, (retryAfter.toMillis() + 999) / 1000);
     }

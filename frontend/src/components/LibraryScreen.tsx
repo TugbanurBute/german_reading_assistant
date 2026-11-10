@@ -12,11 +12,11 @@ import {
   uploadDocument,
 } from "../api/documents.ts";
 import { forgetPosition } from "../text/readingPosition.ts";
+import { DeleteAccountPanel } from "./DeleteAccountPanel.tsx";
 import { libraryErrorMessage } from "./labels.ts";
 
 interface Props {
-  /** The logged-in account, shown with a Log out button. */
-  account: { email: string; onLogout: () => void };
+  account: { email: string; onLogout: () => void; onDeleted: () => void };
   onNew: () => void;
   onWords: () => void;
   onOpen: (document: SavedDocument) => void;
@@ -64,6 +64,7 @@ const secondaryButton ="rounded-lg border border-line px-3.5 py-2 text-sm hover:
 export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [confirmingDeletion, setConfirmingDeletion] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [uploading, setUploading] = useState(false);
   // Only one row is busy, asking for confirmation or being renamed at a time.
@@ -201,6 +202,15 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
             <span className="break-all">{account.email}</span> ·{" "}
             <button type="button" onClick={account.onLogout} className="text-accent underline-offset-2 hover:underline">
               Log out
+            </button>{" "}
+            ·{" "}
+            <button
+              type="button"
+              onClick={() => setConfirmingDeletion(true)}
+              aria-expanded={confirmingDeletion}
+              className="text-muted underline-offset-2 hover:text-die hover:underline"
+            >
+              Delete account
             </button>
           </p>
         </div>
@@ -219,6 +229,14 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
           New text
         </button>
       </div>
+
+      {confirmingDeletion && (
+        <DeleteAccountPanel
+          email={account.email}
+          onDeleted={account.onDeleted}
+          onCancel={() => setConfirmingDeletion(false)}
+        />
+      )}
 
       {/* Always rendered, so screen readers announce messages that appear later. */}
       <div role="status" className="empty:hidden mt-4 text-[13px]">

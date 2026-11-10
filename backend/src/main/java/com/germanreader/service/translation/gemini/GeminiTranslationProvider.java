@@ -38,25 +38,34 @@ public class GeminiTranslationProvider implements TranslationProvider {
         void sleep(Duration duration) throws InterruptedException;
     }
 
+    public static final String BUDGET_NAME = "gemini";
+
+    @FunctionalInterface
+    public interface CallBudget {
+        void acquire();
+    }
+
     private final Models models;
     private final String model;
     private final JsonMapper jsonMapper;
     private final GeminiResponseParser parser;
     private final int maxAttempts;
+    private final CallBudget budget;
     private final Sleeper sleeper;
     private final RandomGenerator random;
 
-    public GeminiTranslationProvider(Models models, String model, JsonMapper jsonMapper, int maxAttempts) {
-        this(models, model, jsonMapper, maxAttempts, duration -> Thread.sleep(duration), ThreadLocalRandom.current());
+    public GeminiTranslationProvider(Models models, String model, JsonMapper jsonMapper, int maxAttempts, CallBudget budget) {
+        this(models, model, jsonMapper, maxAttempts, budget, duration -> Thread.sleep(duration), ThreadLocalRandom.current());
     }
 
-    GeminiTranslationProvider(Models models, String model, JsonMapper jsonMapper, int maxAttempts,
+    GeminiTranslationProvider(Models models, String model, JsonMapper jsonMapper, int maxAttempts, CallBudget budget,
                               Sleeper sleeper, RandomGenerator random) {
         this.models = models;
         this.model = model;
         this.jsonMapper = jsonMapper;
         this.parser = new GeminiResponseParser(jsonMapper);
         this.maxAttempts = maxAttempts;
+        this.budget = budget;
         this.sleeper = sleeper;
         this.random = random;
     }
@@ -91,6 +100,8 @@ public class GeminiTranslationProvider implements TranslationProvider {
 
     private GenerateContentResponse callWithRetry(String userMessage, GenerateContentConfig config) {
         for (int attempt = 1; ; attempt++) {
+            // Every attempt that is sent costs a call, retries too; outside the try, so a used-up budget is not retried.
+            budget.acquire();
             long start = System.nanoTime();
             try {
                 GenerateContentResponse response = models.generateContent(model, userMessage, config);

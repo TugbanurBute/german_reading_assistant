@@ -157,6 +157,14 @@ let loggedIn: { id: string; email: string } | null = ANNA;
 
 function fakeAuth(path: string, init: RequestInit | undefined): Response {
   const unauthenticated = () => json({ code: "UNAUTHENTICATED", detail: "Please log in." }, 401);
+  if (path === "/api/v1/auth/me" && init?.method === "DELETE") {
+    if (!loggedIn) return unauthenticated();
+    const { password } = JSON.parse(init.body as string) as { password: string };
+    if (PASSWORDS[loggedIn.email] !== password) return json({ code: "WRONG_PASSWORD", detail: "Wrong." }, 403);
+    delete PASSWORDS[loggedIn.email];
+    loggedIn = null;
+    return new Response(null, { status: 204 });
+  }
   if (path === "/api/v1/auth/me") return loggedIn ? json(loggedIn) : unauthenticated();
   if (path === "/api/v1/auth/logout") {
     loggedIn = null;
@@ -195,6 +203,7 @@ beforeEach(() => {
   stats = weekOf([0, 0, 0, 0, 0, 0, 0]);
   loggedIn = ANNA;
   for (const email of Object.keys(PASSWORDS)) if (email !== ANNA.email) delete PASSWORDS[email];
+  PASSWORDS[ANNA.email] = "geheim-123"; // a test may have deleted Anna's account
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (url, init) => {
     const path = new URL(url as string).pathname;
@@ -858,6 +867,68 @@ describe("translation limit", () => {
     await user.click(within(popup).getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("bench")).toBeInTheDocument();
   });
+
+  it("explains the daily limit without offering a retry", async () => {
+    const user = await startReadingSample();
+    fetchMock.mockResolvedValueOnce(
+      json({ code: "TRANSLATION_DAILY_LIMIT_REACHED", detail: "Daily limit.", retryAfterSeconds: 7200 }, 429),
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[0]!);
+
+    const popup = await screen.findByRole("dialog", { name: "Translation of “Bank”" });
+    expect(await within(popup).findByText("Daily translation limit reached")).toBeInTheDocument();
+    expect(within(popup).getByText(/resets in about 2 hours \(at midnight UTC\)/)).toBeInTheDocument();
+    expect(within(popup).queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  });
+});
+
+describe("deleting the account", () => {
+  async function openDeletion() {
+    saveToLibrary("Annas Text", SAMPLE_TEXT);
+    localStorage.setItem("lesehilfe.position.doc-1", JSON.stringify({ v: 1, sentence: 3, snippet: "x" }));
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", { name: /^Annas Text/ });
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    return user;
+  }
+
+  const deleteCalls = () => fetchMock.mock.calls.filter(([, init]) => init?.method === "DELETE");
+
+  it("asks for the password, refuses a wrong one, then deletes and logs out", async () => {
+    const user = await openDeletion();
+    const panel = screen.getByRole("form", { name: "Delete your account?" });
+    expect(within(panel).getByText(/permanently deletes/)).toHaveTextContent("anna@example.com");
+
+    await user.click(within(panel).getByRole("button", { name: "Delete my account" }));
+    expect(within(panel).getByRole("alert")).toHaveTextContent("Enter your password to confirm.");
+    expect(deleteCalls()).toHaveLength(0);
+
+    await user.type(within(panel).getByLabelText("Your password"), "falsch-falsch");
+    await user.click(within(panel).getByRole("button", { name: "Delete my account" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("The password is incorrect. Nothing was deleted.");
+    expect(screen.getByRole("button", { name: /^Annas Text/ })).toBeInTheDocument();
+
+    await user.clear(within(panel).getByLabelText("Your password"));
+    await user.type(within(panel).getByLabelText("Your password"), "geheim-123");
+    await user.click(within(panel).getByRole("button", { name: "Delete my account" }));
+
+    expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Your account and all its data have been deleted.");
+    expect(new URL(deleteCalls().at(-1)![0] as string).pathname).toBe("/api/v1/auth/me");
+    expect(localStorage.getItem("lesehilfe.position.doc-1")).toBeNull();
+  });
+
+  it("can be cancelled without sending anything", async () => {
+    const user = await openDeletion();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("form", { name: "Delete your account?" })).not.toBeInTheDocument();
+    expect(deleteCalls()).toHaveLength(0);
+    expect(screen.getByRole("button", { name: /^Annas Text/ })).toBeInTheDocument();
+  });
 });
 
 describe("accounts", () => {
@@ -929,6 +1000,17 @@ describe("accounts", () => {
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("An account with this email already exists.");
+  });
+
+  it("asks to wait after too many login attempts", async () => {
+    const user = await showLogin();
+    fetchMock.mockResolvedValueOnce(json({ code: "AUTH_RATE_LIMITED", detail: "Too many.", retryAfterSeconds: 120 }, 429));
+
+    await user.type(field("Email"), "anna@example.com");
+    await user.type(field("Password"), "geheim-123");
+    await user.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many attempts. Please wait a few minutes and try again.");
   });
 
   it("logs out and forgets the previous user's screens", async () => {

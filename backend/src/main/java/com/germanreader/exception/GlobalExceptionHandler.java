@@ -64,10 +64,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(ex.getErrorCode(), null);
     }
 
-    /** 429 with Retry-After (seconds until the next window), also in the body for the frontend. */
-    @ExceptionHandler(RateLimitExceededException.class)
+     @ExceptionHandler(RateLimitExceededException.class)
     ResponseEntity<Object> handleRateLimit(RateLimitExceededException ex) {
-        ErrorCode code = ErrorCode.TRANSLATION_RATE_LIMITED;
+        ErrorCode code = ex.getErrorCode();
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(code.status(), code.message());
         problem.setProperty("code", code.name());
         problem.setProperty("retryAfterSeconds", ex.retryAfterSeconds());

@@ -27,6 +27,7 @@ import com.germanreader.dto.grammar.NounGrammar;
 import com.germanreader.exception.ErrorCode;
 import com.germanreader.exception.TranslationException;
 import com.germanreader.ratelimit.RateLimitExceededException;
+import com.germanreader.ratelimit.DailyTranslationQuota;
 import com.germanreader.ratelimit.TranslationRateLimiter;
 import java.time.Duration;
 import org.mockito.InOrder;
@@ -60,6 +61,9 @@ class TranslationControllerTest {
 
     @MockitoBean
     private TranslationRateLimiter rateLimiter;
+
+    @MockitoBean
+    private DailyTranslationQuota dailyQuota;
 
     private ResultActions postJson(String body) throws Exception {
         return mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(body));

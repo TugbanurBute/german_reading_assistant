@@ -8,6 +8,7 @@ import { Header, type Theme } from "./components/Header.tsx";
 import { libraryErrorMessage } from "./components/labels.ts";
 import { ReadingApp } from "./ReadingApp.tsx";
 import { usePreference } from "./hooks/usePreference.ts";
+import { forgetAllPositions } from "./text/readingPosition.ts";
 
 const THEMES = ["light", "dark"] as const;
 const LANGUAGES = ["TR", "EN"] as const;
@@ -64,12 +65,20 @@ export default function App() {
     setSession({ status: "anonymous", notice: "You have been logged out." });
   }
 
+  /** The server already removed the account and the login cookie; forget what this browser kept for it. */
+  function handleAccountDeleted() {
+    clearTranslationCache();
+    forgetAllPositions();
+    setSession({ status: "anonymous", notice: "Your account and all its data have been deleted." });
+  }
+
   if (session.status === "authenticated") {
     return (
       <ReadingApp
         key={session.user.id}
         user={session.user}
         onLogout={handleLogout}
+        onAccountDeleted={handleAccountDeleted}
         theme={theme}
         onThemeChange={setTheme}
         language={language}

@@ -22,14 +22,14 @@ type Screen =
 interface Props {
   user: User;
   onLogout: () => void;
+  onAccountDeleted: () => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
   language: TargetLanguage;
   onLanguageChange: (language: TargetLanguage) => void;
 }
 
-/** Everything behind the login. App mounts it once per user, so no state carries over to the next account. */
-export function ReadingApp({ user, onLogout, theme, onThemeChange, language, onLanguageChange }: Props) {
+export function ReadingApp({ user, onLogout, onAccountDeleted, theme, onThemeChange, language, onLanguageChange }: Props) {
   const [mode, setMode] = usePreference<TranslationType>("mode", MODES, "WORD");
   const [screen, setScreen] = useState<Screen>({ name: "library" });
   // The draft survives a look at the reader ("Read without saving", then "Edit text").
@@ -67,7 +67,7 @@ export function ReadingApp({ user, onLogout, theme, onThemeChange, language, onL
           <div className="mx-auto max-w-[44rem] rounded-xl border border-line bg-sheet px-5 py-6 sm:px-10 sm:py-9">
             {screen.name === "library" && (
               <LibraryScreen
-                account={{ email: user.email, onLogout }}
+                account={{ email: user.email, onLogout, onDeleted: onAccountDeleted }}
                 onNew={() => setScreen({ name: "write" })}
                 onWords={() => setScreen({ name: "words" })}
                 onOpen={(saved) => setScreen({ name: "reading", text: saved.content, title: saved.title, documentId: saved.id })}

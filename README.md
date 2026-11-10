@@ -46,19 +46,20 @@ Maven is not required — use the bundled wrapper (`./mvnw`, or `mvnw.cmd` on Wi
 
 ## Run everything with Docker
 
-Only Docker is needed. Copy the template, then set `POSTGRES_PASSWORD`, `JWT_SECRET` and `RABBITMQ_PASSWORD`
-(and `GEMINI_API_KEY` with `TRANSLATION_PROVIDER=gemini`):
+Only Docker is needed. Create `.env` in the project folder (git-ignored) with at least `POSTGRES_PASSWORD`,
+`JWT_SECRET`, `RABBITMQ_USERNAME` and `RABBITMQ_PASSWORD` (and `GEMINI_API_KEY` with `TRANSLATION_PROVIDER=gemini`).
+Without them `docker compose up` stops and names the missing variable. Use only letters and digits in secrets
+(`openssl rand -hex 32`): Compose and Spring both treat `$` and `${…}` as placeholders.
 
 ```bash
-cp .env.example .env
 docker compose up -d --build
 ```
 
 Open http://localhost:8081.
 - **Frontend:** Nginx serves the built app and forwards `/api` to the backend on the same origin, which the login
   and CSRF cookies need.
-- **Not reachable from outside:** the backend and PostgreSQL. Redis, RabbitMQ and Kafka listen on `127.0.0.1` only,
-  for the local development setup below.
+- **Not reachable from other machines:** the backend has no published port at all. The frontend, PostgreSQL, Redis,
+  RabbitMQ and Kafka are published on `127.0.0.1` only (for the browser and the local development setup below).
 - **Startup order:** each service starts once the services it needs report healthy.
 - **Data:** stays in the named volumes `postgres-data`, `rabbitmq-data` and `kafka-data`.
   `docker compose down` keeps them; `down -v` deletes them.
@@ -73,8 +74,88 @@ Open http://localhost:8081.
 | `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD` | yes | RabbitMQ account of the backend (created when the volume is first created) |
 | `TRANSLATION_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL` | no | `mock` by default |
 | `FRONTEND_PORT`, `PUBLIC_ORIGIN` | no | `8081` and `http://localhost:8081`; `PUBLIC_ORIGIN` must match the browser's address bar |
+| `FRONTEND_BIND_ADDRESS` | no | `127.0.0.1`; the HTTPS proxy on the same machine connects there. `0.0.0.0` would expose plain HTTP |
 | `AUTH_COOKIE_SECURE` | no | `true`; Chrome and Firefox accept secure cookies on `http://localhost` |
+| `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW` | no | `10` per `5m` per client address |
+| `REGISTER_RATE_LIMIT`, `REGISTER_RATE_WINDOW` | no | `5` per `1h` per client address |
+| `TRANSLATION_DAILY_LIMIT` | no | `200` translation requests per user and UTC day |
+| `GEMINI_DAILY_CALL_LIMIT` | no | `500` Gemini calls per UTC day for the whole service |
 | `POSTGRES_DB`, `POSTGRES_USER`, `ANALYTICS_TIME_ZONE` | no | `german_reader`, `german_reader`, `UTC` |
+
+## Public beta on a server (HTTPS)
+
+For a single VM (e.g. Oracle Cloud's free tier) with a DuckDNS name such as `lesehilfe.duckdns.org`:
+
+1. **DNS:** point the DuckDNS name at the VM's public IP.
+2. **Firewall:** open only ports 80 and 443 (in the cloud's security list and on the VM). Everything else stays
+   closed: all Compose ports listen on `127.0.0.1`.
+3. **`.env`** on the server (never committed), besides the required secrets:
+   ```
+   PUBLIC_ORIGIN=https://lesehilfe.duckdns.org
+   AUTH_COOKIE_SECURE=true
+   TRANSLATION_PROVIDER=gemini
+   GEMINI_API_KEY=…
+   GEMINI_MODEL=…
+   GEMINI_DAILY_CALL_LIMIT=500
+   ```
+4. **HTTPS:** a reverse proxy on the VM terminates TLS and forwards to `127.0.0.1:8081`. With Caddy, which gets and
+   renews the certificate by itself, the whole `Caddyfile` is:
+   ```
+   lesehilfe.duckdns.org {
+       reverse_proxy 127.0.0.1:8081
+   }
+   ```
+   The proxy must keep the `Host` header and add `X-Forwarded-For` (Caddy does both by default).
+5. `docker compose up -d --build`, then check https://lesehilfe.duckdns.org and the warnings described below.
+
+What protects the beta:
+- **Cookies:** the login cookie and the `XSRF-TOKEN` cookie are `Secure` and `SameSite=Strict`. The browser only
+  sends them over HTTPS to this site.
+- **CORS and CSRF:** `PUBLIC_ORIGIN` is the only allowed origin. Every change also needs the CSRF token.
+- **Client addresses:** Nginx believes `X-Forwarded-For` only from private or loopback addresses (the proxy on the
+  same machine) and passes the result to the backend as `X-Real-IP`. A client on the internet can't choose the address
+  its login limit counts for.
+- **Costs:** at most `GEMINI_DAILY_CALL_LIMIT` Gemini calls per day, and `TRANSLATION_DAILY_LIMIT` translations per
+  user and day (see [Rate limits and quotas](#rate-limits-and-quotas)).
+- **HSTS:** Nginx sends `Strict-Transport-Security` (browsers ignore it over plain HTTP).
+- **Startup warnings:** outside the `local` profile the backend logs a `Production settings:` warning for anything
+  unsafe: an insecure cookie, a plain-HTTP public origin, switched-off quotas or login limits. Check
+  `docker compose logs backend | grep "Production settings"` after deploying.
+
+## Backups
+
+`scripts/backup-db.sh` writes a compressed `pg_dump` to `backups/` (git-ignored), checks that `pg_restore` can
+read it, and keeps the newest 14 (`BACKUP_KEEP`, `BACKUP_DIR` to change). It runs `pg_dump` inside the postgres
+container, so no password is needed or stored. Run it daily from cron on the server, and copy `backups/` off the
+VM from time to time (e.g. `scp`): a backup on the same disk doesn't survive losing the VM.
+
+```bash
+bash scripts/backup-db.sh
+# crontab -e:  30 3 * * * cd /home/ubuntu/german_reading_assistant && bash scripts/backup-db.sh >> backups/backup.log 2>&1
+```
+
+**Check a backup** (do this regularly, not only in an emergency):
+
+```bash
+bash scripts/restore-db.sh backups/german_reader-20261109T033000Z.dump
+```
+
+It restores into a separate database, `german_reader_restore_check`, prints its row counts next to the live
+database's, and drops it again. It refuses to restore into the live database.
+
+**Restore for real** (after data loss). The live database is never overwritten: it is renamed and kept until you
+delete it.
+
+```bash
+KEEP_RESTORE=1 bash scripts/restore-db.sh backups/<file>.dump        # restore and keep german_reader_restore_check
+docker compose stop backend
+docker compose exec postgres psql -U german_reader -d postgres \
+  -c 'ALTER DATABASE german_reader RENAME TO german_reader_before_restore' \
+  -c 'ALTER DATABASE german_reader_restore_check RENAME TO german_reader'
+docker compose start backend
+```
+
+`DB_USER=…` overrides the database owner for both scripts if it differs from the container's `POSTGRES_USER`.
 
 ## Quick start (mock mode, no API key)
 
@@ -100,7 +181,7 @@ Open http://localhost:8081.
    > `POSTGRES_PASSWORD` and `RABBITMQ_*` only apply when their volume is first created; to change them later, also
    > run `ALTER USER german_reader PASSWORD '…'` or `rabbitmqctl change_password lesehilfe …`.
 
-   Redis, RabbitMQ and Kafka (optional, see [Rate limit](#rate-limit)). This needs the root `.env` (see
+   Redis, RabbitMQ and Kafka (optional, see [Rate limits and quotas](#rate-limits-and-quotas)). This needs the root `.env` (see
    [Run everything with Docker](#run-everything-with-docker)); use the same `RABBITMQ_USERNAME` and
    `RABBITMQ_PASSWORD` in `backend/.env`:
 
@@ -133,8 +214,7 @@ The mock provider only knows the words and sentences of the sample text. Any oth
 ## Configuration
 
 The backend reads environment variables. With the `local` profile it also loads `backend/.env`;
-real environment variables win over the file. All variables are listed in
-[backend/.env.example](backend/.env.example).
+real environment variables win over the file. All variables are listed below.
 
 | Variable               | Required          | Example / default                                | Meaning |
 |------------------------|-------------------|--------------------------------------------------|---------|
@@ -154,8 +234,15 @@ real environment variables win over the file. All variables are listed in
 | `TRANSLATION_RATE_LIMIT` | no              | `10`                                             | Translation requests per user per window |
 | `TRANSLATION_RATE_WINDOW` | no             | `60s`                                            | Window length |
 | `TRANSLATION_RATE_LIMIT_ENABLED` | no      | `true`                                           | `false` switches the limit off |
+| `TRANSLATION_DAILY_LIMIT` | no             | `200`                                            | Translation requests per user and UTC day, cached answers included |
+| `GEMINI_DAILY_CALL_LIMIT` | no             | `500`                                            | Gemini calls per UTC day for the whole service, retries included |
+| `QUOTAS_ENABLED`       | no                | `true`                                           | `false` switches both daily quotas off |
+| `LOGIN_RATE_LIMIT`, `LOGIN_RATE_WINDOW` | no | `10`, `5m`                                     | Login attempts per client address and window (password checks before deleting an account count too) |
+| `REGISTER_RATE_LIMIT`, `REGISTER_RATE_WINDOW` | no | `5`, `1h`                                | Registrations per client address and window |
+| `AUTH_RATE_LIMIT_ENABLED` | no             | `true`                                           | `false` switches both off |
+| `CLIENT_IP_HEADER`     | no                | empty (`X-Real-IP` in Docker Compose)            | Header with the client address, set by our reverse proxy. Only believed when the request comes from a private or loopback address |
 | `RABBITMQ_HOST`, `RABBITMQ_PORT` | no      | `localhost`, `5672`                              | RabbitMQ for document analysis |
-| `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD` | no | `guest`, `guest`                              | RabbitMQ credentials (`guest` only works on localhost) |
+| `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD` | yes, outside `local` | `guest`, `guest` in `local`           | RabbitMQ credentials (`guest` only works on localhost) |
 | `DOCUMENT_PROCESSING_ENABLED` | no         | `true`                                           | `false`: no messages are published or consumed |
 | `KAFKA_BOOTSTRAP_SERVERS` | no             | `localhost:9092`                                 | Kafka for vocabulary events |
 | `VOCABULARY_EVENTS_ENABLED` | no           | `true`                                           | `false`: no vocabulary events are published or consumed |
@@ -258,10 +345,21 @@ Everything except registration, login and logout needs a login (translations inc
 | `POST /api/v1/auth/login` | JSON `{"email": "…", "password": "…"}` | `200`, `{id, email}`, and the login cookie |
 | `POST /api/v1/auth/logout` | – | `204`, removes the cookie |
 | `GET /api/v1/auth/me` | – | `200`, `{id, email}` |
+| `DELETE /api/v1/auth/me` | JSON `{"password": "…"}` | `204`, deletes the account and everything in it, removes the cookie |
 
 - **Passwords:** 8 to 72 characters, at most 72 bytes (BCrypt's limit). Only the BCrypt hash (strength 12) is stored.
 - **Emails:** case-insensitive and unique (`409 EMAIL_TAKEN`).
 - **Wrong logins:** a wrong password and an unknown email both get `401 INVALID_CREDENTIALS`.
+- **Attempt limits:** per client address, `LOGIN_RATE_LIMIT` logins per `LOGIN_RATE_WINDOW` and
+  `REGISTER_RATE_LIMIT` registrations per `REGISTER_RATE_WINDOW`. Every attempt counts, successful or not, so the
+  answer (`429 AUTH_RATE_LIMITED` with `Retry-After`) never depends on whether an email is registered. IPv6
+  addresses count per /64. Fail-open if Redis is down; BCrypt still makes every guess slow.
+- **Deleting the account:** only the logged-in account, after its password is checked again (`403 WRONG_PASSWORD`
+  otherwise; the check counts as a login attempt). The database deletes the account's texts, saved words, their
+  unsent analytics events and the daily statistics in the same statement (`ON DELETE CASCADE`).
+  - Messages already in RabbitMQ or Kafka find nothing and change nothing.
+  - Tokens of a deleted account are refused everywhere (`401`), also on other devices.
+  - The shared translation cache holds no user data and stays.
 - **The token:**
   - It's a JWT signed with HS256, containing the user id, issuer, issue time and expiry.
   - It travels only in the `access_token` cookie: `HttpOnly`, `SameSite=Strict`, `Path=/api`, and `Secure` outside `local`.
@@ -292,7 +390,7 @@ Everything except registration, login and logout needs a login (translations inc
 A successful answer contains `translation`, `lemma`, `partOfSpeech`, a `grammar` object whose shape
 depends on `grammar.kind` (`NOUN`, `VERB`, `OTHER`), and `sentenceTranslation`.
 
-### Rate limit
+### Rate limits and quotas
 
 Each user may send `TRANSLATION_RATE_LIMIT` translation requests (default 10) per `TRANSLATION_RATE_WINDOW`
 (default 60 s). Further requests get:
@@ -322,6 +420,22 @@ Retry-After: 42
   - The outage is logged once (WARN), and so is the recovery (INFO).
   - Meanwhile only the login requirement, the translation cache and Gemini's own quota protect the API key.
   - Failing closed would be the other choice: safer for the quota, but nobody could translate while Redis is down.
+
+**Daily quotas** (reset at 00:00 UTC; `QUOTAS_ENABLED=false` switches both off):
+
+| Quota | Counts | Where | Exceeded |
+|---|---|---|---|
+| `TRANSLATION_DAILY_LIMIT` (200) | translation requests per user, cached answers included | Redis, `quota:translations:<userId>:<date>` | `429 TRANSLATION_DAILY_LIMIT_REACHED` |
+| `GEMINI_DAILY_CALL_LIMIT` (500) | calls sent to Gemini by the whole service, every retry included | PostgreSQL, `provider_daily_usage` | `503 TRANSLATION_BUDGET_EXHAUSTED` |
+
+- Both answers carry `Retry-After` and `retryAfterSeconds`: the time until midnight UTC.
+- Cached answers never use the Gemini budget, and identical requests that wait for the same call
+  (single-flight) use it once. Saved translations keep working when the budget is spent.
+- Each Gemini attempt takes one call right before it is sent, with one atomic conditional upsert. Concurrent
+  requests can't exceed the budget.
+- **The Gemini budget lives in PostgreSQL on purpose:** Redis keeps no data across restarts, and a Redis outage
+  must not lift the cost cap. If Redis is down, only the per-user quota pauses (fail-open, logged once); the global
+  budget still applies.
 
 ### Reading library (your own texts only)
 
@@ -395,13 +509,13 @@ Errors are RFC 9457 problem details with a stable `code`:
 |--------|--------|
 | 400 | `VALIDATION_ERROR`, `MALFORMED_REQUEST`, `REQUEST_ERROR` (e.g. an id that is not a UUID), `INVALID_UPLOAD` |
 | 401 | `UNAUTHENTICATED` (no, expired or invalid token), `INVALID_CREDENTIALS` |
-| 403 | `FORBIDDEN` (missing or wrong CSRF token) |
+| 403 | `FORBIDDEN` (missing or wrong CSRF token), `WRONG_PASSWORD` (deleting the account) |
 | 404 | `MOCK_TRANSLATION_NOT_FOUND`, `DOCUMENT_NOT_FOUND`, `VOCABULARY_NOT_FOUND` (also for other users' resources) |
 | 409 | `EMAIL_TAKEN` |
-| 429 | `TRANSLATION_RATE_LIMITED` (with `Retry-After`) |
+| 429 | `TRANSLATION_RATE_LIMITED`, `TRANSLATION_DAILY_LIMIT_REACHED`, `AUTH_RATE_LIMITED` (all with `Retry-After`) |
 | 413 | `UPLOAD_TOO_LARGE` |
 | 502 | `PROVIDER_INVALID_RESPONSE` |
-| 503 | `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_MODEL_UNAVAILABLE`, `PROVIDER_REJECTED` |
+| 503 | `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_MODEL_UNAVAILABLE`, `PROVIDER_REJECTED`, `TRANSLATION_BUDGET_EXHAUSTED` (with `Retry-After`) |
 | 504 | `PROVIDER_TIMEOUT` |
 | 500 | `INTERNAL_ERROR` |
 

@@ -29,6 +29,10 @@ export function logout(): Promise<void> {
   return apiRequest("POST", `${BASE}/logout`);
 }
 
+export function deleteAccount(password: string): Promise<void> {
+  return apiRequest("DELETE", `${BASE}/me`, { password });
+}
+
 /** The password problem to show before sending, or null. */
 export function passwordProblem(password: string): string | null {
   if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters.`;

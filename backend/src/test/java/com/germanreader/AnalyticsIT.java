@@ -38,7 +38,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -209,12 +209,25 @@ class AnalyticsIT {
 
     @Test
     void aFailedDatabaseWriteStoresNothingSoTheEventCanBeRetried() {
-        VocabularyWordSaved forUnknownUser = event(UUID.randomUUID(), NOW); // the count row's foreign key fails
+        VocabularyWordSaved outOfRange = event(TestAuth.USER_ID, Instant.parse("+5874898-06-01T12:00:00Z"));
 
-        assertThatThrownBy(() -> analytics.record(forUnknownUser)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> analytics.record(outOfRange)).isInstanceOf(DataAccessException.class);
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM processed_vocabulary_event WHERE event_id = ?",
-                Integer.class, forUnknownUser.eventId())).isZero();
+                Integer.class, outOfRange.eventId())).isZero();
+    }
+
+    @Test
+    void anEventOfADeletedAccountIsMarkedDoneAndCountsNothing() {
+        UUID deleted = UUID.randomUUID(); // no app_user row (any more)
+        VocabularyWordSaved late = event(deleted, NOW);
+
+        assertThatCode(() -> analytics.record(late)).doesNotThrowAnyException();
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM processed_vocabulary_event WHERE event_id = ?",
+                Integer.class, late.eventId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM vocabulary_daily_stats WHERE user_id = ?",
+                Integer.class, deleted)).isZero();
     }
 
     @Test

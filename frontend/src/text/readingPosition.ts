@@ -51,6 +51,14 @@ export function forgetPosition(documentId: string): void {
   try {
     localStorage.removeItem(keyFor(documentId));
   } catch {
+  }
+}
+
+export function forgetAllPositions(): void {
+  try {
+    const keys = Object.keys(localStorage).filter((key) => key.startsWith("lesehilfe.position."));
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch {
     // Nothing to do.
   }
 }

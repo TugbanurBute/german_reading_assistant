@@ -37,10 +37,12 @@ public class AnalyticsService {
         if (inserted == 0) {
             return false;
         }
+
         jdbc.update("""
-                INSERT INTO vocabulary_daily_stats (user_id, day, saved_count) VALUES (?, ?, 1)
+                INSERT INTO vocabulary_daily_stats (user_id, day, saved_count)
+                SELECT ?, ?, 1 WHERE EXISTS (SELECT 1 FROM app_user WHERE id = ?)
                 ON CONFLICT (user_id, day) DO UPDATE SET saved_count = vocabulary_daily_stats.saved_count + 1
-                """, event.userId(), Date.valueOf(event.occurredAt().atZone(zone).toLocalDate()));
+                """, event.userId(), Date.valueOf(event.occurredAt().atZone(zone).toLocalDate()), event.userId());
         return true;
     }
 

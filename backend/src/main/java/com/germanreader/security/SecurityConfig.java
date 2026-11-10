@@ -6,11 +6,13 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,7 +24,10 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -31,29 +36,26 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationProvider;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfToken;
 
-/**
- * Stateless JWT authentication: the token travels in an HttpOnly, SameSite=Strict cookie and is checked on
- * every request (signature, issuer, expiry). Because browsers send cookies automatically, state-changing
- * requests also need Spring's CSRF token (an XSRF-TOKEN cookie echoed in the X-XSRF-TOKEN header).
- */
+
 @Slf4j
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthProperties.class)
 public class SecurityConfig {
 
-    static final int MIN_SECRET_BYTES = 32; // HS256 needs a key of at least 256 bits
+    static final int MIN_SECRET_BYTES = 32;
 
-    /** Open without a login. They also ignore the token cookie, so a stale one can't block logging in again. */
     private static final List<String> PUBLIC_PATHS = List.of("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout");
 
     @Bean
-    SecurityFilterChain apiSecurity(HttpSecurity http, ProblemResponses problems, JwtDecoder jwtDecoder) throws Exception {
+    SecurityFilterChain apiSecurity(HttpSecurity http, ProblemResponses problems, JwtDecoder jwtDecoder,
+                                    AuthProperties properties) throws Exception {
         http
                 .cors(Customizer.withDefaults()) // uses WebConfig's CorsConfigurationSource
-                .csrf(csrf -> csrf.spa())
+                .csrf(csrf -> csrf.spa().csrfTokenRepository(csrfCookies(properties)))
                 .addFilterAfter(csrfCookieFilter(), CsrfFilter.class)
                 .addFilterAt(tokenFilter(jwtDecoder, problems), BearerTokenAuthenticationFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -96,10 +98,13 @@ public class SecurityConfig {
                 .orElse(null);
     }
 
-    /**
-     * Spring creates the CSRF token lazily, so before the first POST there would be no XSRF-TOKEN cookie and
-     * the login would be refused. Touching the token makes Spring set the cookie on every response.
-     */
+    private static CookieCsrfTokenRepository csrfCookies(AuthProperties properties) {
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setCookieCustomizer(cookie -> cookie.secure(properties.cookieSecure()).sameSite("Strict"));
+        return repository;
+    }
+
+
     private static Filter csrfCookieFilter() {
         return (request, response, chain) -> {
             if (request.getAttribute(CsrfToken.class.getName()) instanceof CsrfToken token) {
@@ -134,11 +139,13 @@ public class SecurityConfig {
         return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSigningKey));
     }
 
-    /** Accepts only HS256 tokens signed with our key, issued by us and not expired (60 s clock skew). */
     @Bean
-    JwtDecoder jwtDecoder(SecretKey jwtSigningKey) {
+    JwtDecoder jwtDecoder(SecretKey jwtSigningKey, ObjectProvider<ActiveAccountValidator> activeAccount) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSigningKey).macAlgorithm(MacAlgorithm.HS256).build();
-        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(AuthTokens.ISSUER));
+        List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
+        validators.add(JwtValidators.createDefaultWithIssuer(AuthTokens.ISSUER));
+        activeAccount.ifAvailable(validators::add);
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
         return decoder;
     }
 

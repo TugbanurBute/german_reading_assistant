@@ -1,5 +1,6 @@
 package com.germanreader.config;
 
+import com.germanreader.ratelimit.ProviderCallBudget;
 import com.germanreader.service.translation.TranslationProvider;
 import com.germanreader.service.translation.gemini.GeminiModelCheck;
 import com.germanreader.service.translation.gemini.GeminiProperties;
@@ -52,9 +53,9 @@ public class TranslationProviderConfig {
 
         @Bean
         TranslationProvider geminiTranslationProvider(Client geminiClient, GeminiProperties properties,
-                                                      JsonMapper jsonMapper) {
+                                                      JsonMapper jsonMapper, ProviderCallBudget budget) {
             return new GeminiTranslationProvider(geminiClient.models, properties.model(), jsonMapper,
-                    properties.maxAttempts());
+                    properties.maxAttempts(), () -> budget.acquire(GeminiTranslationProvider.BUDGET_NAME));
         }
 
         @Bean

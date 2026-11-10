@@ -66,7 +66,6 @@ export interface ErrorCopy {
   canRetry: boolean;
 }
 
-/** @param retryAfterSeconds for TRANSLATION_RATE_LIMITED: how long until translating works again */
 export function errorCopy(code: ErrorCode, retryAfterSeconds?: number): ErrorCopy {
   switch (code) {
     case "TRANSLATION_RATE_LIMITED":
@@ -76,6 +75,18 @@ export function errorCopy(code: ErrorCode, retryAfterSeconds?: number): ErrorCop
           ? `You've translated a lot in a short time. You can continue in ${retryAfterSeconds} ${retryAfterSeconds === 1 ? "second" : "seconds"}.`
           : "You've translated a lot in a short time. Please wait a moment.",
         canRetry: true,
+      };
+    case "TRANSLATION_DAILY_LIMIT_REACHED":
+      return {
+        title: "Daily translation limit reached",
+        body: `You've used today's translations. ${resetText(retryAfterSeconds)} Words you've already looked up still open.`,
+        canRetry: false,
+      };
+    case "TRANSLATION_BUDGET_EXHAUSTED":
+      return {
+        title: "Translations paused for today",
+        body: `Lesehilfe has reached its daily translation limit. ${resetText(retryAfterSeconds)} Words looked up before still work.`,
+        canRetry: false,
       };
     case "MOCK_TRANSLATION_NOT_FOUND":
       return {
@@ -127,9 +138,19 @@ export function errorCopy(code: ErrorCode, retryAfterSeconds?: number): ErrorCop
     case "INVALID_CREDENTIALS":
     case "EMAIL_TAKEN":
     case "FORBIDDEN":
+    case "AUTH_RATE_LIMITED":
+    case "WRONG_PASSWORD":
     case "INTERNAL_ERROR":
       return { title: "Something went wrong", body: "Try again in a moment.", canRetry: true };
   }
+}
+
+function resetText(retryAfterSeconds: number | undefined): string {
+  if (!retryAfterSeconds) return "It resets at midnight UTC.";
+  const hours = Math.round(retryAfterSeconds / 3600);
+  if (hours >= 1) return `It resets in about ${hours} ${hours === 1 ? "hour" : "hours"} (at midnight UTC).`;
+  const minutes = Math.max(1, Math.round(retryAfterSeconds / 60));
+  return `It resets in about ${minutes} ${minutes === 1 ? "minute" : "minutes"} (at midnight UTC).`;
 }
 
 /** One-line messages for the reading library (saving, uploading, opening, deleting). */

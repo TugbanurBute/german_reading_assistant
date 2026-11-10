@@ -21,12 +21,15 @@ export type ErrorCode =
   | "EMAIL_TAKEN"
   | "FORBIDDEN"
   | "TRANSLATION_RATE_LIMITED"
+  | "TRANSLATION_DAILY_LIMIT_REACHED"
+  | "TRANSLATION_BUDGET_EXHAUSTED"
+  | "AUTH_RATE_LIMITED"
+  | "WRONG_PASSWORD"
   | "INTERNAL_ERROR"
   | "NETWORK_ERROR";
 
 export class ApiError extends Error {
   readonly code: ErrorCode;
-  /** Set for TRANSLATION_RATE_LIMITED: seconds until translating works again. */
   readonly retryAfterSeconds?: number;
 
   constructor(code: ErrorCode, message: string, retryAfterSeconds?: number) {

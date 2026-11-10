@@ -62,6 +62,18 @@ public class AuthService {
         return users.findById(id).orElseThrow(() -> new AuthException(ErrorCode.UNAUTHENTICATED, "Token for unknown user"));
     }
 
+
+    @Transactional
+    public void deleteAccount(UUID id, String password) {
+        AppUser user = currentUser(id);
+        if (tooLong(password) || !passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new AuthException(ErrorCode.WRONG_PASSWORD, "Wrong password for account deletion");
+        }
+        users.delete(user);
+        users.flush();
+        log.info("Deleted user {} and all their data", id);
+    }
+
     private static boolean tooLong(String password) {
         return password.getBytes(StandardCharsets.UTF_8).length > RegisterRequest.MAX_PASSWORD_BYTES;
     }

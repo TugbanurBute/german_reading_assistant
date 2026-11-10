@@ -72,6 +72,21 @@ describe("labels", () => {
     expect(errorCopy("TRANSLATION_RATE_LIMITED").body).toBe("You've translated a lot in a short time. Please wait a moment.");
   });
 
+  it("explains the daily quotas with the time until midnight UTC, without a retry", () => {
+    expect(errorCopy("TRANSLATION_DAILY_LIMIT_REACHED", 3 * 3600)).toMatchObject({
+      title: "Daily translation limit reached",
+      canRetry: false,
+    });
+    expect(errorCopy("TRANSLATION_DAILY_LIMIT_REACHED", 3 * 3600).body).toContain("resets in about 3 hours (at midnight UTC)");
+    expect(errorCopy("TRANSLATION_DAILY_LIMIT_REACHED", 90).body).toContain("in about 2 minutes");
+    expect(errorCopy("TRANSLATION_BUDGET_EXHAUSTED", 3600)).toMatchObject({
+      title: "Translations paused for today",
+      canRetry: false,
+    });
+    expect(errorCopy("TRANSLATION_BUDGET_EXHAUSTED", 3600).body).toContain("in about 1 hour");
+    expect(errorCopy("TRANSLATION_BUDGET_EXHAUSTED").body).toContain("It resets at midnight UTC.");
+  });
+
   it("tells a retired model and a rejected key apart from an outage, without a retry", () => {
     expect(errorCopy("PROVIDER_UNAVAILABLE")).toMatchObject({ title: "Translation service unavailable", canRetry: true });
     expect(errorCopy("PROVIDER_MODEL_UNAVAILABLE")).toMatchObject({ title: "Translation model not available", canRetry: false });

@@ -4,6 +4,9 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/german_reader}
     username: ${DB_USERNAME:german_reader}
+  rabbitmq:
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 
 app:
   cors:

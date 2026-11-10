@@ -17,6 +17,7 @@ import com.germanreader.dto.TranslationResponse;
 import com.germanreader.dto.TranslationType;
 import com.germanreader.exception.ErrorCode;
 import com.germanreader.exception.TranslationException;
+import com.germanreader.ratelimit.RateLimitExceededException;
 import com.google.genai.Models;
 import com.google.genai.errors.ClientException;
 import com.google.genai.errors.GenAiIOException;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.SplittableRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.random.RandomGenerator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
@@ -57,10 +59,11 @@ class GeminiTranslationProviderTest {
 
     private final Models models = mock(Models.class);
     private final List<Duration> waits = new ArrayList<>();
+    private final AtomicInteger budget = new AtomicInteger();
     private final GeminiTranslationProvider provider = provider(2);
 
     private GeminiTranslationProvider provider(int maxAttempts) {
-        return new GeminiTranslationProvider(models, MODEL, JSON, maxAttempts, waits::add, NO_JITTER);
+        return new GeminiTranslationProvider(models, MODEL, JSON, maxAttempts, budget::incrementAndGet, waits::add, NO_JITTER);
     }
 
     private static GenerateContentResponse answer(String text) {
@@ -234,7 +237,7 @@ class GeminiTranslationProviderTest {
         @Test
         void anInterruptedWaitStopsAndKeepsTheInterruptFlag() {
             givenCallFails(new ServerException(503, "UNAVAILABLE", "The model is overloaded"));
-            GeminiTranslationProvider interrupted = new GeminiTranslationProvider(models, MODEL, JSON, 2,
+            GeminiTranslationProvider interrupted = new GeminiTranslationProvider(models, MODEL, JSON, 2, budget::incrementAndGet,
                     duration -> { throw new InterruptedException(); }, NO_JITTER);
 
             assertThatThrownBy(() -> interrupted.translate(WORD_REQUEST))
@@ -331,7 +334,7 @@ class GeminiTranslationProviderTest {
 
         @Test
         void growsExponentiallyAndStaysWithinItsJitterRange() {
-            GeminiTranslationProvider jittered = new GeminiTranslationProvider(models, MODEL, JSON, 2, waits::add,
+            GeminiTranslationProvider jittered = new GeminiTranslationProvider(models, MODEL, JSON, 2, budget::incrementAndGet, waits::add,
                     new SplittableRandom(42));
             for (int i = 0; i < 100; i++) {
                 assertThat(jittered.waitBefore(2, null)).isBetween(Duration.ofMillis(250), Duration.ofMillis(500));
@@ -345,6 +348,45 @@ class GeminiTranslationProviderTest {
             assertThat(GeminiTranslationProvider.retryHint("Please Retry in 34s")).isEqualTo(Duration.ofSeconds(34));
             assertThat(GeminiTranslationProvider.retryHint("Quota exceeded")).isNull();
             assertThat(GeminiTranslationProvider.retryHint(null)).isNull();
+        }
+    }
+
+    @Nested
+    class DailyBudget {
+
+        private static final RateLimitExceededException USED_UP =
+                new RateLimitExceededException(ErrorCode.TRANSLATION_BUDGET_EXHAUSTED, Duration.ofHours(3));
+
+        @Test
+        void everyAttemptTakesACallRetriesIncluded() {
+            givenFailureThenSuccess(new ServerException(503, "UNAVAILABLE", "The model is overloaded"));
+
+            provider.translate(WORD_REQUEST);
+
+            assertCalls(2);
+            assertThat(budget.get()).isEqualTo(2);
+        }
+
+        @Test
+        void aUsedUpBudgetStopsBeforeGeminiIsCalled() {
+            GeminiTranslationProvider noBudget = new GeminiTranslationProvider(models, MODEL, JSON, 2,
+                    () -> { throw USED_UP; }, waits::add, NO_JITTER);
+
+            assertThatThrownBy(() -> noBudget.translate(WORD_REQUEST)).isSameAs(USED_UP);
+            assertCalls(0);
+        }
+
+        @Test
+        void aBudgetUsedUpBeforeTheRetryEndsWithoutASecondCall() {
+            givenCallFails(new ServerException(503, "UNAVAILABLE", "The model is overloaded"));
+            GeminiTranslationProvider oneCallLeft = new GeminiTranslationProvider(models, MODEL, JSON, 2, () -> {
+                if (budget.incrementAndGet() > 1) {
+                    throw USED_UP;
+                }
+            }, waits::add, NO_JITTER);
+
+            assertThatThrownBy(() -> oneCallLeft.translate(WORD_REQUEST)).isSameAs(USED_UP);
+            assertCalls(1);
         }
     }
 }

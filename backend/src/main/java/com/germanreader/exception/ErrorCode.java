@@ -28,8 +28,14 @@ public enum ErrorCode {
 
     TRANSLATION_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS,
             "You have reached the translation limit. Please wait a moment before translating more."),
+    TRANSLATION_DAILY_LIMIT_REACHED(HttpStatus.TOO_MANY_REQUESTS,
+            "You have reached today's translation limit. It resets at midnight UTC."),
+    TRANSLATION_BUDGET_EXHAUSTED(HttpStatus.SERVICE_UNAVAILABLE,
+            "Translations are paused for today because the service's daily limit is used up. Saved translations still work."),
+    AUTH_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Too many attempts. Please wait a few minutes and try again."),
 
     UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "Please log in."),
+    WRONG_PASSWORD(HttpStatus.FORBIDDEN, "The password is incorrect."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "The email or password is incorrect."),
     EMAIL_TAKEN(HttpStatus.CONFLICT, "An account with this email already exists."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "The request was refused. Reload the page and try again."),
