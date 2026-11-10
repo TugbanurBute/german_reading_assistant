@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { findSentence, forgetPosition, loadPosition, savePosition } from "./readingPosition.ts";
+import { findSentence, forgetAllPositions, forgetPosition, loadPosition, savePosition } from "./readingPosition.ts";
 import { SAMPLE_TEXT } from "./sampleText.ts";
 import { segmentText } from "./segment.ts";
 
-const KEY = "lesehilfe.position.doc-1";
+const KEY = "lesehilfe.position.anna.doc-1";
 const document = segmentText(SAMPLE_TEXT);
 
 beforeEach(() => localStorage.clear());
@@ -11,18 +11,18 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("reading position", () => {
   it("saves a sentence anchor and loads it again", () => {
-    savePosition("doc-1", findSentence(document, 4)!);
+    savePosition("anna", "doc-1", findSentence(document, 4)!);
 
     expect(JSON.parse(localStorage.getItem(KEY)!)).toEqual({
       v: 1,
       sentence: 4,
       snippet: "Leider ist das Schloss an meiner",
     });
-    expect(loadPosition("doc-1", document)).toBe(4);
+    expect(loadPosition("anna", "doc-1", document)).toBe(4);
   });
 
   it("returns null when nothing is saved", () => {
-    expect(loadPosition("doc-1", document)).toBeNull();
+    expect(loadPosition("anna", "doc-1", document)).toBeNull();
   });
 
   it.each([
@@ -34,7 +34,7 @@ describe("reading position", () => {
   ])("ignores and removes %s", (_, stored) => {
     localStorage.setItem(KEY, stored);
 
-    expect(loadPosition("doc-1", document)).toBeNull();
+    expect(loadPosition("anna", "doc-1", document)).toBeNull();
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 
@@ -46,14 +46,33 @@ describe("reading position", () => {
       throw new Error("blocked");
     });
 
-    expect(() => savePosition("doc-1", findSentence(document, 0)!)).not.toThrow();
-    expect(loadPosition("doc-1", document)).toBeNull();
+    expect(() => savePosition("anna", "doc-1", findSentence(document, 0)!)).not.toThrow();
+    expect(loadPosition("anna", "doc-1", document)).toBeNull();
   });
 
   it("forgets a document's position", () => {
-    savePosition("doc-1", findSentence(document, 2)!);
-    forgetPosition("doc-1");
+    savePosition("anna", "doc-1", findSentence(document, 2)!);
+    forgetPosition("anna", "doc-1");
 
     expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("keeps each user's position separate, also for the same shared text", () => {
+    savePosition("anna", "builtin-1", findSentence(document, 4)!);
+    savePosition("ben", "builtin-1", findSentence(document, 1)!);
+
+    expect(loadPosition("anna", "builtin-1", document)).toBe(4);
+    expect(loadPosition("ben", "builtin-1", document)).toBe(1);
+    expect(loadPosition("carla", "builtin-1", document)).toBeNull();
+  });
+
+  it("forgets all positions of one user only", () => {
+    savePosition("anna", "doc-1", findSentence(document, 2)!);
+    savePosition("anna", "builtin-1", findSentence(document, 3)!);
+    savePosition("ben", "builtin-1", findSentence(document, 1)!);
+
+    forgetAllPositions("anna");
+
+    expect(Object.keys(localStorage)).toEqual(["lesehilfe.position.ben.builtin-1"]);
   });
 });

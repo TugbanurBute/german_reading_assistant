@@ -5,6 +5,7 @@ import App from "./App.tsx";
 import { clearTranslationCache } from "./api/translations.ts";
 import type { VocabularyStats } from "./api/analytics.ts";
 import type { SavedDocument } from "./api/documents.ts";
+import type { BuiltinText } from "./api/library.ts";
 import { PROCESSING_POLL_MS } from "./components/LibraryScreen.tsx";
 import type { TranslationRequest } from "./api/types.ts";
 import { type SaveVocabularyInput, type VocabularyEntry, meaningKey } from "./api/vocabulary.ts";
@@ -183,6 +184,19 @@ function fakeAuth(path: string, init: RequestInit | undefined): Response {
   return json(loggedIn);
 }
 
+/** The backend's shared built-in texts (read-only). The A1 text is the sample text, so mock translations work. */
+const BUILTIN_TEXTS: BuiltinText[] = [
+  { id: "builtin-a1", title: "Im Park", level: "A1", description: "Großmutter auf der Bank.", wordCount: 120, readingMinutes: 2, content: SAMPLE_TEXT },
+  { id: "builtin-a2", title: "Ein neuer Job", level: "A2", description: "Der erste Arbeitstag.", wordCount: 330, readingMinutes: 4, content: "Elif ist nervös." },
+  { id: "builtin-b1", title: "Arbeiten im Homeoffice", level: "B1", description: "Vor- und Nachteile.", wordCount: 460, readingMinutes: 5, content: "Daniel arbeitet zu Hause." },
+];
+
+function fakeBuiltinLibrary(path: string): Response {
+  if (path === "/api/v1/library") return json(BUILTIN_TEXTS.map(({ content: _content, ...summary }) => summary));
+  const text = BUILTIN_TEXTS.find((t) => t.id === path.split("/").pop());
+  return text ? json(text) : json({ code: "DOCUMENT_NOT_FOUND", detail: "Not found." }, 404);
+}
+
 /** The backend's learning statistics for the logged-in user: 3–9 November 2026, today last. */
 function weekOf(counts: number[]): VocabularyStats {
   const days = counts.map((count, i) => ({ date: `2026-11-0${i + 3}`, count }));
@@ -213,6 +227,7 @@ beforeEach(() => {
     if (path === "/api/v1/translations") return fakeBackend(JSON.parse(init?.body as string) as TranslationRequest);
     if (path.startsWith("/api/v1/vocabulary")) return fakeVocabulary(path, init);
     if (path === "/api/v1/analytics/vocabulary") return json(stats);
+    if (path.startsWith("/api/v1/library")) return fakeBuiltinLibrary(path);
     return fakeLibrary(path, init);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -883,10 +898,96 @@ describe("translation limit", () => {
   });
 });
 
+describe("built-in texts", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  async function openBuiltinTab() {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Your library is empty");
+    await user.click(screen.getByRole("radio", { name: "Built-in texts" }));
+    await screen.findByRole("list", { name: "Built-in texts" });
+    return user;
+  }
+
+  const builtinList = () => screen.getByRole("list", { name: "Built-in texts" });
+
+  it("lists the shared texts with level and reading time, without rename or delete", async () => {
+    await openBuiltinTab();
+
+    const rows = within(builtinList()).getAllByRole("button");
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Im Park"),
+      expect.stringContaining("Ein neuer Job"),
+      expect.stringContaining("Arbeiten im Homeoffice"),
+    ]);
+    expect(rows[0]).toHaveTextContent("A1 · 2 min read");
+    expect(rows[0]).toHaveTextContent("Großmutter auf der Bank.");
+    expect(screen.queryByRole("button", { name: /^Rename/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Delete “/ })).not.toBeInTheDocument();
+    // Personal texts stay in their own tab.
+    expect(screen.queryByText("Your library is empty")).not.toBeInTheDocument();
+  });
+
+  it("filters by level and remembers the tab and the filter", async () => {
+    const user = await openBuiltinTab();
+
+    await user.click(screen.getByRole("radio", { name: "A2" }));
+    expect(within(builtinList()).getAllByRole("button").map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Ein neuer Job"),
+    ]);
+    await user.click(screen.getByRole("radio", { name: "All" }));
+    expect(within(builtinList()).getAllByRole("button")).toHaveLength(3);
+    await user.click(screen.getByRole("radio", { name: "B1" }));
+
+    expect(localStorage.getItem("lesehilfe.libraryTab")).toBe('"builtin"');
+    expect(localStorage.getItem("lesehilfe.builtinLevel")).toBe('"B1"');
+  });
+
+  it("opens a text in the reader, translates it and saves words linked to it", async () => {
+    const user = await openBuiltinTab();
+
+    await user.click(within(builtinList()).getByRole("button", { name: /^Im Park/ }));
+
+    expect(await screen.findByRole("heading", { name: "Im Park" })).toBeInTheDocument();
+    expect(screen.getByText("Level A1")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Bank" })[0]!);
+    const popup = await screen.findByRole("dialog", { name: "Translation of “Bank”" });
+    await user.click(await within(popup).findByRole("button", { name: "Save to My words" }));
+    expect(await within(popup).findByText("Saved to My words")).toBeInTheDocument();
+    const post = fetchMock.mock.calls.find(([url, init]) => (url as string).endsWith("/api/v1/vocabulary") && init?.method === "POST");
+    expect(JSON.parse(post![1]?.body as string)).toMatchObject({ sourceDocumentId: "builtin-a1" });
+
+    // Back leads to the library, still on the built-in tab.
+    await user.click(screen.getByRole("button", { name: "Back to library" }));
+    expect(await screen.findByRole("list", { name: "Built-in texts" })).toBeInTheDocument();
+  });
+
+  it("keeps the reading position under the user's own key", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const user = await openBuiltinTab();
+
+    await user.click(within(builtinList()).getByRole("button", { name: /^Im Park/ }));
+    await screen.findByRole("heading", { name: "Im Park" });
+    // jsdom has no layout: let every sentence count as visible, then scroll.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      { bottom: 100, top: 80, left: 0, right: 0, width: 0, height: 20, x: 0, y: 0, toJSON: () => ({}) },
+    );
+    fireEvent.scroll(window);
+
+    await vi.waitFor(() => expect(localStorage.getItem("lesehilfe.position.user-anna.builtin-a1")).not.toBeNull(), {
+      timeout: 2000,
+    });
+    expect(Object.keys(localStorage).filter((key) => key.startsWith("lesehilfe.position."))).toEqual([
+      "lesehilfe.position.user-anna.builtin-a1",
+    ]);
+  });
+});
+
 describe("deleting the account", () => {
   async function openDeletion() {
     saveToLibrary("Annas Text", SAMPLE_TEXT);
-    localStorage.setItem("lesehilfe.position.doc-1", JSON.stringify({ v: 1, sentence: 3, snippet: "x" }));
+    localStorage.setItem("lesehilfe.position.user-anna.doc-1", JSON.stringify({ v: 1, sentence: 3, snippet: "x" }));
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("button", { name: /^Annas Text/ });
@@ -917,7 +1018,7 @@ describe("deleting the account", () => {
     expect(await screen.findByRole("heading", { name: "Log in" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Your account and all its data have been deleted.");
     expect(new URL(deleteCalls().at(-1)![0] as string).pathname).toBe("/api/v1/auth/me");
-    expect(localStorage.getItem("lesehilfe.position.doc-1")).toBeNull();
+    expect(localStorage.getItem("lesehilfe.position.user-anna.doc-1")).toBeNull();
   });
 
   it("can be cancelled without sending anything", async () => {
@@ -961,7 +1062,7 @@ describe("accounts", () => {
     // Cookies travel with every request; the token itself is never visible here.
     expect(fetchMock.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
     // Only preferences are stored in the browser, no token.
-    expect(Object.keys(localStorage).sort()).toEqual(["lesehilfe.language", "lesehilfe.mode", "lesehilfe.theme"]);
+    expect(Object.keys(localStorage).sort()).toEqual(["lesehilfe.language", "lesehilfe.libraryTab", "lesehilfe.mode", "lesehilfe.theme"]);
   });
 
   it("explains a wrong password and keeps the form", async () => {
@@ -1127,7 +1228,7 @@ describe("long texts", () => {
   /** The sample text 40 times: about 17,000 characters, several pages. */
   const LONG_TEXT = Array.from({ length: 40 }, () => SAMPLE_TEXT).join("\n\n");
   const pages = paginate(segmentText(LONG_TEXT));
-  const positionKey = (id: string) => `lesehilfe.position.${id}`;
+  const positionKey = (id: string) => `lesehilfe.position.user-anna.${id}`;
   const firstWordOf = (page: number) =>
     pages[page]!.paragraphs[0]!.sentences[0]!.tokens.find((token) => token.wordIndex !== null)!.wordIndex!;
 

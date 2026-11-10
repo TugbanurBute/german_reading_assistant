@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { User } from "./api/auth.ts";
+import type { CefrLevel } from "./api/library.ts";
 import type { TargetLanguage, TranslationType } from "./api/types.ts";
 import { Header, type Theme } from "./components/Header.tsx";
 import { LibraryScreen } from "./components/LibraryScreen.tsx";
@@ -17,7 +18,7 @@ type Screen =
   | { name: "library" }
   | { name: "write" }
   | { name: "words" }
-  | { name: "reading"; text: string; title: string | null; documentId: string | null };
+  | { name: "reading"; text: string; title: string | null; documentId: string | null; level?: CefrLevel };
 
 interface Props {
   user: User;
@@ -67,10 +68,13 @@ export function ReadingApp({ user, onLogout, onAccountDeleted, theme, onThemeCha
           <div className="mx-auto max-w-[44rem] rounded-xl border border-line bg-sheet px-5 py-6 sm:px-10 sm:py-9">
             {screen.name === "library" && (
               <LibraryScreen
-                account={{ email: user.email, onLogout, onDeleted: onAccountDeleted }}
+                account={{ id: user.id, email: user.email, onLogout, onDeleted: onAccountDeleted }}
                 onNew={() => setScreen({ name: "write" })}
                 onWords={() => setScreen({ name: "words" })}
                 onOpen={(saved) => setScreen({ name: "reading", text: saved.content, title: saved.title, documentId: saved.id })}
+                onOpenBuiltin={(text) =>
+                  setScreen({ name: "reading", text: text.content, title: text.title, documentId: text.id, level: text.level })
+                }
               />
             )}
             {screen.name === "write" && (
@@ -91,6 +95,7 @@ export function ReadingApp({ user, onLogout, onAccountDeleted, theme, onThemeCha
             {screen.name === "words" && <MyWordsScreen vocabulary={vocabulary} onBack={toLibrary} />}
             {screen.name === "reading" && document && (
               <>
+                {screen.level && <p className="mb-1 text-[13px] font-medium text-muted">Level {screen.level}</p>}
                 {screen.title && <h1 className="mb-5 font-serif text-2xl font-medium">{screen.title}</h1>}
                 {/* A new key starts a new reading (first page, fresh position) for every text opened. */}
                 <Reader
@@ -99,6 +104,7 @@ export function ReadingApp({ user, onLogout, onAccountDeleted, theme, onThemeCha
                   mode={mode}
                   language={language}
                   documentId={screen.documentId}
+                  userId={user.id}
                 />
               </>
             )}

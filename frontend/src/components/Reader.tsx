@@ -12,17 +12,19 @@ interface Props {
   document: ReadingDocument;
   mode: TranslationType;
   language: TargetLanguage;
-  /** Saved library texts remember the reading position; unsaved texts don't. */
+  /** Saved and built-in texts remember the reading position; unsaved texts don't. */
   documentId: string | null;
+  /** Positions are kept per user, so users sharing a browser or a built-in text don't share them. */
+  userId: string;
 }
 
 /**
  * Shows a document page by page (see paginate) and, for saved texts, remembers and restores the reading
  * position. Translation itself stays in ReadingView, which only ever renders the current page.
  */
-export function Reader({ document, mode, language, documentId }: Props) {
+export function Reader({ document, mode, language, documentId, userId }: Props) {
   const pages = useMemo(() => paginate(document), [document]);
-  const [resumeAt] = useState(() => (documentId ? loadPosition(documentId, document) : null));
+  const [resumeAt] = useState(() => (documentId ? loadPosition(userId, documentId, document) : null));
   const [page, setPage] = useState(() => (resumeAt === null ? 0 : Math.max(0, pageOfSentence(pages, resumeAt))));
   const containerRef = useRef<HTMLDivElement>(null);
   const pageLabelRef = useRef<HTMLParagraphElement>(null);
@@ -53,7 +55,7 @@ export function Reader({ document, mode, language, documentId }: Props) {
       timer = undefined;
       const id = firstVisibleSentence(containerRef.current);
       const sentence = id === null ? undefined : findSentence(pages[page]!, id);
-      if (sentence) savePosition(documentId, sentence);
+      if (sentence) savePosition(userId, documentId, sentence);
     };
     const schedule = () => {
       timer ??= setTimeout(save, POSITION_SAVE_INTERVAL_MS);
@@ -64,7 +66,7 @@ export function Reader({ document, mode, language, documentId }: Props) {
       window.removeEventListener("scroll", schedule);
       clearTimeout(timer);
     };
-  }, [documentId, pages, page]);
+  }, [userId, documentId, pages, page]);
 
   const goTo = (target: number) => {
     if (target === page || target < 0 || target >= pages.length) return;

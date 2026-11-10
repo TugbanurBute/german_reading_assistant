@@ -31,6 +31,8 @@ public interface ReadingDocumentRepository extends JpaRepository<ReadingDocument
 
     boolean existsByIdAndOwnerId(UUID id, UUID ownerId);
 
+    boolean existsByIdAndBuiltinKeyIsNotNull(UUID id);
+
     @Modifying
     @Query("""
             UPDATE ReadingDocument d SET d.title = :title, d.updatedAt = :updatedAt

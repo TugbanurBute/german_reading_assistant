@@ -68,7 +68,7 @@ export default function App() {
   /** The server already removed the account and the login cookie; forget what this browser kept for it. */
   function handleAccountDeleted() {
     clearTranslationCache();
-    forgetAllPositions();
+    if (session.status === "authenticated") forgetAllPositions(session.user.id);
     setSession({ status: "anonymous", notice: "Your account and all its data have been deleted." });
   }
 

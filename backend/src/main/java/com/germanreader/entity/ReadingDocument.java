@@ -59,6 +59,9 @@ public class ReadingDocument {
 
     private Integer paragraphCount;
 
+    @Column(insertable = false, updatable = false)
+    private String builtinKey;
+
     public ReadingDocument(UUID ownerId, String title, String content) {
         this.ownerId = ownerId;
         this.title = title;

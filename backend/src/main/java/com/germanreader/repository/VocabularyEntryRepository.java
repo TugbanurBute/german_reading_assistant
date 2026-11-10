@@ -14,13 +14,12 @@ import org.springframework.data.repository.query.Param;
 /** Every query that the API uses takes the owner, like ReadingDocumentRepository. */
 public interface VocabularyEntryRepository extends JpaRepository<VocabularyEntry, UUID> {
 
-    /** The source title only comes from the same owner's text. */
     String SELECT_RESPONSE = """
             SELECT new com.germanreader.dto.vocabulary.VocabularyResponse(
                 v.id, v.originalText, v.lemma, v.article, v.partOfSpeech, v.translation, v.targetLanguage,
                 v.sourceSentence, v.sourceDocumentId, d.title, v.createdAt)
             FROM VocabularyEntry v
-            LEFT JOIN ReadingDocument d ON d.id = v.sourceDocumentId AND d.ownerId = v.ownerId
+            LEFT JOIN ReadingDocument d ON d.id = v.sourceDocumentId AND (d.ownerId = v.ownerId OR d.builtinKey IS NOT NULL)
             """;
 
     @Query(SELECT_RESPONSE + " WHERE v.ownerId = :ownerId ORDER BY v.createdAt DESC, v.id")

@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class VocabularyService {
 
-    /** The saved entry, and whether this call created it (false: the meaning was already saved). */
     public record SaveResult(VocabularyResponse entry, boolean created) {
     }
 
@@ -31,14 +30,6 @@ public class VocabularyService {
         this.documentRepository = documentRepository;
     }
 
-    /**
-     * Saves one meaning of a word. A meaning is lemma + translation + target language, ignoring case, so
-     * "Bank / bench" and "Bank / bank" are two entries, while saving "Bank / bench" again (from any sentence)
-     * returns the existing entry unchanged.
-     *
-     * <p>Not transactional: each repository call runs in its own transaction. A failed INSERT aborts its
-     * PostgreSQL transaction, and the follow-up lookup after a race must still be able to run.
-     */
     public SaveResult save(UUID ownerId, SaveVocabularyRequest request) {
         String originalText = TextNormalizer.normalize(request.originalText());
         String lemma = isBlank(request.lemma()) ? originalText : TextNormalizer.normalize(request.lemma());
@@ -50,10 +41,10 @@ public class VocabularyService {
             return new SaveResult(get(existing.get(), ownerId), false);
         }
 
-        // Only the owner's own texts can be linked. A word read in a text that was deleted meanwhile (or an id
-        // of someone else's text) is still saved, just without the link.
+
         UUID documentId = request.sourceDocumentId();
-        if (documentId != null && !documentRepository.existsByIdAndOwnerId(documentId, ownerId)) {
+        if (documentId != null && !documentRepository.existsByIdAndOwnerId(documentId, ownerId)
+                && !documentRepository.existsByIdAndBuiltinKeyIsNotNull(documentId)) {
             documentId = null;
         }
 
@@ -68,10 +59,6 @@ public class VocabularyService {
         }
     }
 
-    /**
-     * Two rare races: the same meaning was saved at the same moment (unique index), or the source text was
-     * deleted between the check above and the insert (foreign key).
-     */
     private SaveResult afterFailedInsert(VocabularyEntry entry, DataIntegrityViolationException failure) {
         var saved = repository.findMeaning(entry.getOwnerId(), entry.getLemma(), entry.getTargetLanguage(), entry.getTranslation());
         if (saved.isPresent()) {

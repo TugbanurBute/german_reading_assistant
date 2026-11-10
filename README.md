@@ -459,6 +459,29 @@ Rules:
   - Control characters other than tab and line breaks are rejected, since they mean a binary file. The MIME type the browser sends is ignored.
   - The title is the file name without `.txt`.
 
+### Built-in texts (shared, read-only)
+
+15 original German texts, five each for A1, A2 and B1, in the library's "Built-in texts" tab.
+
+| Method and path | Success |
+|---|---|
+| `GET /api/v1/library` (optional `?level=A1`, `A2` or `B1`) | `200`, `[{id, title, level, description, wordCount, readingMinutes}]`, A1 first |
+| `GET /api/v1/library/{id}` | `200`, the same fields plus `content` |
+
+- **Storage:** each text is one row in `reading_document`, without an owner and with a `builtin_key`, `cefr_level`
+  and `description` (V8). The files live in `backend/src/main/resources/library/`: `catalog.json` lists them, and
+  `<key>.txt` holds each text.
+- **Seeding:** at startup `BuiltinLibrarySeeder` inserts missing texts and updates changed ones in place, by key.
+  An id never changes, so saved words keep their link. Unchanged texts aren't written, and the unique index on
+  `builtin_key` prevents duplicates. A text removed from the catalog stays in the database.
+- **Read-only:** there is no endpoint that changes these texts. The personal `/api/v1/documents` endpoints filter by
+  owner, so they answer `404` for them.
+- **Reading time:** words divided by a typical learner speed (60, 80 or 100 words per minute for A1, A2, B1).
+- **Shared features:** translation (with cache and limits), Save to My words (linked to the text, with its title) and
+  the reading position all work like for personal texts.
+- **Reading positions:** they stay in the browser, now per user: `lesehilfe.position.<userId>.<documentId>`.
+  Positions saved before Phase 16 (without a user id) are no longer read.
+
 ### My words (your own words only)
 
 | Method and path | Body | Success |

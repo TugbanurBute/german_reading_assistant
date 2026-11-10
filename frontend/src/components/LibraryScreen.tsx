@@ -13,13 +13,18 @@ import {
 } from "../api/documents.ts";
 import { forgetPosition } from "../text/readingPosition.ts";
 import { DeleteAccountPanel } from "./DeleteAccountPanel.tsx";
+import { usePreference } from "../hooks/usePreference.ts";
+import type { BuiltinText } from "../api/library.ts";
+import { BuiltinLibrary } from "./BuiltinLibrary.tsx";
 import { libraryErrorMessage } from "./labels.ts";
+import { SegmentedControl } from "./SegmentedControl.tsx";
 
 interface Props {
-  account: { email: string; onLogout: () => void; onDeleted: () => void };
+  account: { id: string; email: string; onLogout: () => void; onDeleted: () => void };
   onNew: () => void;
   onWords: () => void;
   onOpen: (document: SavedDocument) => void;
+  onOpenBuiltin: (text: BuiltinText) => void;
 }
 
 type ListState =
@@ -59,9 +64,18 @@ function processingText(summary: DocumentSummary): string {
   return ` · ${words} · ${paragraphs}`;
 }
 
+type Tab = "mine" | "builtin";
+
+const TABS = [
+  { value: "mine", label: "My library" },
+  { value: "builtin", label: "Built-in texts" },
+] as const;
+const TAB_VALUES = TABS.map((option) => option.value);
+
 const secondaryButton ="rounded-lg border border-line px-3.5 py-2 text-sm hover:bg-control";
 
-export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
+export function LibraryScreen({ account, onNew, onWords, onOpen, onOpenBuiltin }: Props) {
+  const [tab, setTab] = usePreference<Tab>("libraryTab", TAB_VALUES, "mine");
   const [list, setList] = useState<ListState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [confirmingDeletion, setConfirmingDeletion] = useState(false);
@@ -122,6 +136,7 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
     try {
       const saved = await uploadDocument(file);
       setList((state) => (state.status === "ready" ? { ...state, documents: [saved, ...state.documents] } : state));
+      setTab("mine"); // an upload started from the built-in tab should be visible right away
       setNotice({ kind: "success", text: `Added “${saved.title}” to your library.` });
     } catch (error) {
       setNotice({ kind: "error", text: libraryErrorMessage(codeOf(error)) });
@@ -174,14 +189,14 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
     setNotice(null);
     try {
       await deleteDocument(summary.id);
-      forgetPosition(summary.id);
+      forgetPosition(account.id, summary.id);
       removeFromList(summary.id);
       setNotice({ kind: "success", text: `Deleted “${summary.title}”.` });
     } catch (error) {
       const code = codeOf(error);
       if (code === "DOCUMENT_NOT_FOUND") {
         // Already gone: the goal is reached.
-        forgetPosition(summary.id);
+        forgetPosition(account.id, summary.id);
         removeFromList(summary.id);
         setNotice({ kind: "success", text: `Deleted “${summary.title}”.` });
       } else {
@@ -197,7 +212,6 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="mr-auto">
           <h1 className="font-serif text-xl font-medium">Your library</h1>
-          <p className="mt-1 text-[13px] text-muted">Saved texts, newest first.</p>
           <p className="mt-1 text-[13px] text-muted">
             <span className="break-all">{account.email}</span> ·{" "}
             <button type="button" onClick={account.onLogout} className="text-accent underline-offset-2 hover:underline">
@@ -244,6 +258,18 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
       </div>
 
       <div className="mt-5">
+        <SegmentedControl label="Library" value={tab} options={TABS} onChange={setTab} />
+      </div>
+
+      {tab === "builtin" && (
+        <div className="mt-4">
+          <BuiltinLibrary onOpen={onOpenBuiltin} />
+        </div>
+      )}
+
+      {tab === "mine" && (
+      <div className="mt-4">
+        <p className="mb-3 text-[13px] text-muted">Your own texts, newest first.</p>
         {list.status === "loading" && <p className="py-8 text-center text-sm text-muted">Loading your library…</p>}
 
         {list.status === "error" && (
@@ -259,7 +285,9 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
         {list.status === "ready" && list.documents.length === 0 && (
           <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center">
             <p className="font-serif text-lg">Your library is empty</p>
-            <p className="mt-1 text-[13px] text-muted">Paste a German text with “New text” or upload a .txt file.</p>
+            <p className="mt-1 text-[13px] text-muted">
+              Paste a German text with “New text”, upload a .txt file, or read one of the built-in texts.
+            </p>
           </div>
         )}
 
@@ -291,6 +319,7 @@ export function LibraryScreen({ account, onNew, onWords, onOpen }: Props) {
           </ul>
         )}
       </div>
+      )}
     </div>
   );
 }
