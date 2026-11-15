@@ -45,14 +45,24 @@ public interface ReadingDocumentRepository extends JpaRepository<ReadingDocument
     @Query("DELETE FROM ReadingDocument d WHERE d.id = :id AND d.ownerId = :ownerId")
     int deleteDocumentById(@Param("id") UUID id, @Param("ownerId") UUID ownerId);
 
+    /*
+     * Processing. A claim stores its start time in processing_started_at; that value is the claim's fencing token.
+     * Completing or releasing needs the token, so a worker whose claim expired and was taken over writes nothing.
+     */
+
+    /** Claims a PENDING document, or one whose claim has expired. Never FAILED ones (see requeueFailed). */
     @Transactional
     @Modifying
     @Query("""
-            UPDATE ReadingDocument d SET d.processingStatus = com.germanreader.entity.ProcessingStatus.PROCESSING
+            UPDATE ReadingDocument d SET d.processingStatus = com.germanreader.entity.ProcessingStatus.PROCESSING,
+                d.processingStartedAt = :claimedAt
             WHERE d.id = :id AND d.processingVersion = :version
-              AND d.processingStatus <> com.germanreader.entity.ProcessingStatus.COMPLETED
+              AND (d.processingStatus = com.germanreader.entity.ProcessingStatus.PENDING
+                   OR (d.processingStatus = com.germanreader.entity.ProcessingStatus.PROCESSING
+                       AND (d.processingStartedAt IS NULL OR d.processingStartedAt < :staleBefore)))
             """)
-    int startProcessing(@Param("id") UUID id, @Param("version") int version);
+    int startProcessing(@Param("id") UUID id, @Param("version") int version, @Param("claimedAt") Instant claimedAt,
+                        @Param("staleBefore") Instant staleBefore);
 
     @Query("SELECT d.content FROM ReadingDocument d WHERE d.id = :id")
     Optional<String> findContentById(@Param("id") UUID id);
@@ -64,17 +74,48 @@ public interface ReadingDocumentRepository extends JpaRepository<ReadingDocument
                 d.wordCount = :words, d.characterCount = :characters, d.paragraphCount = :paragraphs,
                 d.processedAt = :processedAt
             WHERE d.id = :id AND d.processingVersion = :version
+              AND d.processingStatus = com.germanreader.entity.ProcessingStatus.PROCESSING
+              AND d.processingStartedAt = :claimedAt
             """)
-    int completeProcessing(@Param("id") UUID id, @Param("version") int version, @Param("words") int words,
-                           @Param("characters") int characters, @Param("paragraphs") int paragraphs,
-                           @Param("processedAt") Instant processedAt);
+    int completeProcessing(@Param("id") UUID id, @Param("version") int version, @Param("claimedAt") Instant claimedAt,
+                           @Param("words") int words, @Param("characters") int characters,
+                           @Param("paragraphs") int paragraphs, @Param("processedAt") Instant processedAt);
 
+    /** Gives the claim back after an error, so the retry of the same message can claim it again. */
+    @Transactional
+    @Modifying
+    @Query("""
+            UPDATE ReadingDocument d SET d.processingStatus = com.germanreader.entity.ProcessingStatus.PENDING,
+                d.processingStartedAt = NULL
+            WHERE d.id = :id AND d.processingVersion = :version
+              AND d.processingStatus = com.germanreader.entity.ProcessingStatus.PROCESSING
+              AND d.processingStartedAt = :claimedAt
+            """)
+    int releaseProcessing(@Param("id") UUID id, @Param("version") int version, @Param("claimedAt") Instant claimedAt);
+
+    /**
+     * After the retries are used up. Only an unclaimed document: another worker's live claim is left alone, and a
+     * claim that could not be released expires and is re-queued by the relay.
+     */
     @Transactional
     @Modifying
     @Query("""
             UPDATE ReadingDocument d SET d.processingStatus = com.germanreader.entity.ProcessingStatus.FAILED
             WHERE d.id = :id AND d.processingVersion = :version
-              AND d.processingStatus <> com.germanreader.entity.ProcessingStatus.COMPLETED
+              AND d.processingStatus = com.germanreader.entity.ProcessingStatus.PENDING
             """)
     int failProcessing(@Param("id") UUID id, @Param("version") int version);
+
+    /**
+     * The explicit way back from FAILED: a new version, so delayed copies of the old messages are ignored, and back
+     * into the outbox for the relay.
+     */
+    @Transactional
+    @Modifying
+    @Query("""
+            UPDATE ReadingDocument d SET d.processingStatus = com.germanreader.entity.ProcessingStatus.PENDING,
+                d.processingVersion = d.processingVersion + 1, d.processingQueuedAt = NULL, d.processingStartedAt = NULL
+            WHERE d.id = :id AND d.processingStatus = com.germanreader.entity.ProcessingStatus.FAILED
+            """)
+    int requeueFailed(@Param("id") UUID id);
 }

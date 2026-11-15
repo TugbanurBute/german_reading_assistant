@@ -6,7 +6,10 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
-    publisher-confirm-type: simple
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
@@ -113,6 +116,9 @@ app:
     # false: no messages are published or consumed; documents stay PENDING (reading is unaffected).
     enabled: ${DOCUMENT_PROCESSING_ENABLED:true}
     relay-interval: PT2S
+    # A claim (PROCESSING) or a queued message older than this counts as lost and is re-queued.
+    lease: ${DOCUMENT_PROCESSING_LEASE:PT5M}
+    confirm-timeout: PT5S
 
 translation:
   provider: ${TRANSLATION_PROVIDER}

@@ -51,6 +51,8 @@ public class ReadingDocument {
 
     private Instant processingQueuedAt;
 
+    private Instant processingStartedAt;
+
     private Instant processedAt;
 
     private Integer wordCount;
