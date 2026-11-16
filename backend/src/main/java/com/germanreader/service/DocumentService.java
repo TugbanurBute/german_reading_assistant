@@ -8,6 +8,7 @@ import com.germanreader.exception.DocumentException;
 import com.germanreader.exception.ErrorCode;
 import com.germanreader.repository.ReadingDocumentRepository;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -23,10 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-/**
- * The reading library. Every method takes the owner (the logged-in user); another user's text behaves exactly
- * like a missing one (404). Logs ids and sizes only, never titles or content.
- */
+
 @Slf4j
 @Service
 public class DocumentService {
@@ -46,20 +44,24 @@ public class DocumentService {
         return DocumentResponse.from(saved);
     }
 
-    /**
-     * Stores a UTF-8 .txt upload, titled after the file name. Not transactional itself: the file is
-     * checked first, and only the single insert at the end needs a transaction (create() has one).
-     */
     public DocumentResponse upload(UUID ownerId, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw invalidUpload("No file or an empty file");
         }
         String filename = StringUtils.getFilename(file.getOriginalFilename());
-        if (filename == null || !filename.toLowerCase(Locale.ROOT).endsWith(".txt")) {
-            throw invalidUpload("Not a .txt file name");
+        String lowerName = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
+        String content;
+        if (lowerName.endsWith(".txt")) {
+            if (file.getSize() > DocumentLimits.MAX_TXT_UPLOAD_BYTES) {
+                throw new DocumentException(ErrorCode.UPLOAD_TOO_LARGE, "Text upload has " + file.getSize() + " bytes");
+            }
+            content = normalize(decodeUtf8(file));
+        } else if (lowerName.endsWith(".pdf")) {
+            content = extractPdf(file);
+        } else {
+            throw invalidUpload("Not a .txt or .pdf file name");
         }
 
-        String content = normalize(decodeUtf8(file));
         if (content.isEmpty()) {
             throw invalidUpload("The file contains only whitespace");
         }
@@ -81,10 +83,7 @@ public class DocumentService {
                 .orElseThrow(() -> notFound(id));
     }
 
-    /**
-     * Changes the title only. The id stays the same, so saved words keep their link to the text.
-     * Returns the summary: the client already has the content and nothing in it changed.
-     */
+
     @Transactional
     public DocumentSummary rename(UUID id, UUID ownerId, String title) {
         // PostgreSQL stores microseconds; truncating keeps the returned value equal to the stored one.
@@ -104,10 +103,7 @@ public class DocumentService {
         log.debug("Deleted document {}", id);
     }
 
-    /**
-     * Strict decoding: malformed bytes are an error instead of being silently replaced with U+FFFD.
-     * Control characters other than tab and line breaks mean the file is binary, even if it decodes.
-     */
+
     private static String decodeUtf8(MultipartFile file) {
         String text;
         try {
@@ -130,11 +126,21 @@ public class DocumentService {
         return text;
     }
 
+    private static String extractPdf(MultipartFile file) {
+        if (file.getSize() > DocumentLimits.MAX_PDF_UPLOAD_BYTES) {
+            throw new DocumentException(ErrorCode.UPLOAD_TOO_LARGE, "PDF upload has " + file.getSize() + " bytes");
+        }
+        try (InputStream input = file.getInputStream()) {
+            return PdfTextExtractor.extract(input, DocumentLimits.MAX_CONTENT_LENGTH);
+        } catch (IOException e) {
+            throw invalidUpload("The upload could not be read: " + e.getClass().getSimpleName());
+        }
+    }
+
     private static boolean isForbiddenControl(int c) {
         return (c < 0x20 && c != '\t' && c != '\n' && c != '\r') || c == 0x7F;
     }
 
-    /** One line-break style and no surrounding whitespace, whatever editor or OS the text came from. */
     private static String normalize(String content) {
         return content.replace("\r\n", "\n").replace('\r', '\n').strip();
     }

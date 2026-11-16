@@ -83,9 +83,12 @@ async function fakeLibrary(path: string, init: RequestInit | undefined): Promise
     const file = (init?.body as FormData).get("file") as File;
     const content = await file.text();
     if (content.includes("\u0000")) {
-      return json({ code: "INVALID_UPLOAD", detail: "The file must be a non-empty, UTF-8 encoded .txt text file." }, 400);
+      return json({ code: "INVALID_UPLOAD", detail: "The file must be a non-empty UTF-8 .txt file or a valid PDF." }, 400);
     }
-    return json(saveToLibrary(file.name.replace(/\.txt$/i, ""), content), 201);
+    // Stand-ins for the server's PDF checks: the "file content" names the outcome.
+    if (content === "scan") return json({ code: "PDF_NO_TEXT", detail: "No text." }, 400);
+    if (content === "encrypted") return json({ code: "PDF_ENCRYPTED", detail: "Encrypted." }, 400);
+    return json(saveToLibrary(file.name.replace(/\.(txt|pdf)$/i, ""), content), 201);
   }
   const id = path.split("/").pop();
   const document = library.find((d) => d.id === id);
@@ -289,7 +292,7 @@ describe("reading library", () => {
     expect(await screen.findByRole("heading", { name: "Im Park" })).toBeInTheDocument();
     expect(library[0]).toMatchObject({ title: "Im Park", content: SAMPLE_TEXT });
 
-    await user.click(screen.getByRole("button", { name: "Back to library" }));
+    await user.click(screen.getByRole("button", { name: "Back to Library" }));
     const list = await screen.findByRole("list", { name: "Saved texts" });
     expect(within(list).getByText("Im Park")).toBeInTheDocument();
   });
@@ -315,30 +318,109 @@ describe("reading library", () => {
     expect(within(popup).getByText("bench")).toBeInTheDocument();
   });
 
-  it("uploads a .txt file and lists it", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    await screen.findByText("Your library is empty");
-
-    const file = new File(["Es war einmal ein König."], "Märchen.txt", { type: "text/plain" });
-    await user.upload(screen.getByLabelText("Upload .txt"), file);
-
-    expect(await screen.findByText("Added “Märchen” to your library.")).toBeInTheDocument();
-    expect(within(screen.getByRole("list", { name: "Saved texts" })).getByText("Märchen")).toBeInTheDocument();
-  });
-
-  it("rejects other file types before uploading, and shows the server's verdict on bad content", async () => {
+  async function openImport() {
     const user = userEvent.setup({ applyAccept: false });
     render(<App />);
     await screen.findByText("Your library is empty");
-    const input = screen.getByLabelText("Upload .txt");
+    await user.click(screen.getByRole("button", { name: "Import PDF or TXT" }));
+    return user;
+  }
 
-    await user.upload(input, new File(["%PDF"], "buch.pdf", { type: "application/pdf" }));
-    expect(screen.getByText(/Only non-empty .txt files saved as UTF-8/)).toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([url]) => (url as string).endsWith("/upload"))).toBe(false);
+  const importCalls = () => fetchMock.mock.calls.filter(([url]) => (url as string).endsWith("/upload"));
+  const importForm = () => screen.queryByRole("form", { name: "Import a PDF or TXT file" });
 
-    await user.upload(input, new File(["bin\u0000ary"], "bild.txt", { type: "text/plain" }));
-    expect(await screen.findByText(/Only non-empty .txt files saved as UTF-8/)).toBeInTheDocument();
+  it("imports a .txt file: shows the formats, the chosen file, then lists it", async () => {
+    const user = await openImport();
+    expect(within(importForm()!).getByText(/up to 5 MB and 300 pages/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+
+    await user.upload(screen.getByLabelText("Choose file"), new File(["Es war einmal ein König."], "Märchen.txt", { type: "text/plain" }));
+    expect(within(importForm()!).getByText("Märchen.txt")).toBeInTheDocument();
+    expect(importCalls()).toHaveLength(0); // nothing is sent before "Import"
+
+    await user.click(screen.getByRole("button", { name: "Import" }));
+
+    expect(await screen.findByText("Imported “Märchen” into your library.")).toBeInTheDocument();
+    expect(importForm()).not.toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Saved texts" })).getByText("Märchen")).toBeInTheDocument();
+  });
+
+  it("imports a PDF, showing progress while the server reads it", async () => {
+    const user = await openImport();
+    const answer = fetchMock.getMockImplementation()!;
+    let finish: () => void = () => undefined;
+    fetchMock.mockImplementation(async (url, init) => {
+      if ((url as string).endsWith("/upload")) await new Promise<void>((resolve) => (finish = resolve));
+      return answer(url, init);
+    });
+
+    await user.upload(screen.getByLabelText("Choose file"), new File(["Ein Text aus einem PDF."], "Kapitel 1.pdf", { type: "application/pdf" }));
+    await user.click(screen.getByRole("button", { name: "Import" }));
+
+    expect(await screen.findByRole("button", { name: "Importing…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByText("Reading the file…")).toBeInTheDocument();
+    finish();
+    expect(await screen.findByText("Imported “Kapitel 1” into your library.")).toBeInTheDocument();
+  });
+
+  it("lets the user replace or remove the chosen file, and cancel", async () => {
+    const user = await openImport();
+
+    await user.upload(screen.getByLabelText("Choose file"), new File(["eins"], "eins.txt", { type: "text/plain" }));
+    await user.upload(screen.getByLabelText("Choose another file"), new File(["zwei"], "zwei.pdf", { type: "application/pdf" }));
+    expect(screen.queryByText("eins.txt")).not.toBeInTheDocument();
+    expect(screen.getByText("zwei.pdf")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Remove zwei.pdf" }));
+    expect(screen.getByText("No file selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(importForm()).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import PDF or TXT" })).toHaveAttribute("aria-expanded", "false");
+    expect(importCalls()).toHaveLength(0);
+  });
+
+  it("puts the keyboard focus on the file chooser and closes with Escape", async () => {
+    const user = await openImport();
+    expect(screen.getByLabelText("Choose file")).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+
+    expect(importForm()).not.toBeInTheDocument();
+  });
+
+  it("rejects other types and oversized files before sending them", async () => {
+    const user = await openImport();
+
+    await user.upload(screen.getByLabelText("Choose file"), new File(["# Notizen"], "notizen.md", { type: "text/markdown" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/can't be imported/);
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+
+    const bigTxt = new File([new Uint8Array(512 * 1024 + 1)], "lang.txt", { type: "text/plain" });
+    await user.upload(screen.getByLabelText("Choose another file"), bigTxt);
+    expect(screen.getByRole("alert")).toHaveTextContent(/512 KB for .txt, 5 MB and 300 pages for PDF/);
+
+    const bigPdf = new File([new Uint8Array(5 * 1024 * 1024 + 1)], "gross.pdf", { type: "application/pdf" });
+    await user.upload(screen.getByLabelText("Choose another file"), bigPdf);
+    expect(screen.getByRole("alert")).toHaveTextContent(/too large/);
+    expect(importCalls()).toHaveLength(0);
+  });
+
+  it.each([
+    ["scan", "scan.pdf", /no selectable text/],
+    ["encrypted", "geheim.pdf", /password-protected/],
+    ["bin\u0000ary", "bild.txt", /can't be imported/],
+  ])("shows the server's verdict on a file it can't read (%s) and keeps the file for another try", async (content, name, message) => {
+    const user = await openImport();
+
+    await user.upload(screen.getByLabelText("Choose file"), new File([content], name));
+    await user.click(screen.getByRole("button", { name: "Import" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByText(name)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
     expect(screen.getByText("Your library is empty")).toBeInTheDocument();
   });
 
@@ -558,7 +640,7 @@ describe("my words", () => {
     await screen.findByText("Saved to My words");
 
     await user.click(screen.getByRole("button", { name: "Edit text" }));
-    await user.click(screen.getByRole("button", { name: "← Library" }));
+    await user.click(screen.getByRole("button", { name: "Back to Library" }));
     await user.click(await screen.findByRole("button", { name: "My words" }));
 
     const list = await screen.findByRole("list", { name: "Saved words" });
@@ -959,7 +1041,7 @@ describe("built-in texts", () => {
     expect(JSON.parse(post![1]?.body as string)).toMatchObject({ sourceDocumentId: "builtin-a1" });
 
     // Back leads to the library, still on the built-in tab.
-    await user.click(screen.getByRole("button", { name: "Back to library" }));
+    await user.click(screen.getByRole("button", { name: "Back to Library" }));
     expect(await screen.findByRole("list", { name: "Built-in texts" })).toBeInTheDocument();
   });
 
@@ -1354,5 +1436,56 @@ describe("long texts", () => {
     await new Promise((resolve) => setTimeout(resolve, 600));
 
     expect(Object.keys(localStorage).filter((key) => key.startsWith("lesehilfe.position."))).toEqual([]);
+  });
+});
+
+describe("navigation", () => {
+  it("names the product Wortweise and leads home from the brand on every screen", async () => {
+    saveToLibrary("Großmutter", SAMPLE_TEXT);
+    const user = userEvent.setup();
+    render(<App />);
+    const home = await screen.findByRole("button", { name: "Wortweise" });
+    expect(screen.queryByText(/Lesehilfe/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "My words" }));
+    await screen.findByRole("heading", { name: "My words" });
+    await user.click(home);
+    expect(await screen.findByRole("heading", { name: "Your library" })).toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: /^Großmutter/ }));
+    await screen.findByRole("heading", { name: "Großmutter" });
+    await user.click(screen.getByRole("button", { name: "Wortweise" }));
+    expect(await screen.findByRole("heading", { name: "Your library" })).toBeInTheDocument();
+  });
+
+  it("shows a labelled Back to Library action above a saved text", async () => {
+    saveToLibrary("Großmutter", SAMPLE_TEXT);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /^Großmutter/ }));
+
+    const back = await screen.findByRole("button", { name: "Back to Library" });
+    const heading = screen.getByRole("heading", { name: "Großmutter" });
+    expect(back.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(back).toHaveTextContent("Back to Library");
+
+    await user.click(back);
+    expect(await screen.findByRole("list", { name: "Saved texts" })).toBeInTheDocument();
+  });
+
+  it("offers Edit text instead for a text read without saving", async () => {
+    await startReadingSample();
+
+    expect(screen.getByRole("button", { name: "Edit text" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Back to Library" })).not.toBeInTheDocument();
+  });
+
+  it("shows the brand without a link and the tagline before logging in", async () => {
+    loggedIn = null;
+    render(<App />);
+
+    expect(await screen.findByText("Read naturally. Learn as you go.")).toBeInTheDocument();
+    expect(screen.getByText("Wortweise")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wortweise" })).not.toBeInTheDocument();
   });
 });

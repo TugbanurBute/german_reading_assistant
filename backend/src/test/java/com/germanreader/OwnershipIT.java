@@ -118,6 +118,25 @@ class OwnershipIT {
     }
 
     @Test
+    void pdfImportsBelongToTheImporterAndNeedALogin() throws Exception {
+        MockMultipartFile pdf = new MockMultipartFile("file", "Park.pdf", "application/pdf", TestPdfs.text(TEXT));
+        long before = documents.count();
+
+        mockMvc.perform(multipart("/api/v1/documents/upload").file(pdf).with(csrf()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+        assertThat(documents.count()).isEqualTo(before);
+
+        UUID imported = idOf(as(ANNA, multipart("/api/v1/documents/upload").file(pdf)).andExpect(status().isCreated()));
+
+        assertThat(documents.findById(imported).orElseThrow().getOwnerId()).isEqualTo(ANNA);
+        as(BEN, get("/api/v1/documents/" + imported)).andExpect(status().isNotFound());
+        as(ANNA, get("/api/v1/documents/" + imported))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").value(TEXT));
+    }
+
+    @Test
     void uploadsBelongToTheUploader() throws Exception {
         UUID uploaded = idOf(as(ANNA, multipart("/api/v1/documents/upload")
                 .file(new MockMultipartFile("file", "Park.txt", "text/plain", TEXT.getBytes(StandardCharsets.UTF_8))))

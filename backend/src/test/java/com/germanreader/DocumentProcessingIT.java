@@ -11,6 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -39,6 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.amqp.AmqpConnectException;
 import org.springframework.amqp.core.ReturnedMessage;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
@@ -248,6 +250,26 @@ class DocumentProcessingIT {
                 .andExpect(jsonPath("$[0].processingStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$[0].wordCount").value(14))
                 .andExpect(jsonPath("$[0].paragraphCount").value(2));
+    }
+
+    @Test
+    void anImportedPdfGoesThroughTheSameProcessing() throws Exception {
+        byte[] pdf = TestPdfs.text("Am Morgen sitzt meine Großmutter auf der Bank im Park.", "", "", "Sie füttert die Tauben.");
+        String json = mockMvc.perform(multipart("/api/v1/documents/upload")
+                        .file(new MockMultipartFile("file", "Im Park.pdf", "application/pdf", pdf)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.processingStatus").value("PENDING"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        UUID id = UUID.fromString(jsonMapper.readTree(json).get("id").asString());
+        brokerAccepts();
+
+        assertThat(relay.publishPending()).isEqualTo(1);
+        processor.process(published.getFirst());
+
+        ReadingDocument done = row(id);
+        assertThat(done.getProcessingStatus()).isEqualTo(ProcessingStatus.COMPLETED);
+        assertThat(done.getWordCount()).isEqualTo(14);
+        assertThat(done.getParagraphCount()).isEqualTo(2);
     }
 
     @Test

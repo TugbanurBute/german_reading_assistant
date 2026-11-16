@@ -44,9 +44,8 @@ spring:
     locations: classpath:db/migration
   servlet:
     multipart:
-      # .txt uploads to the reading library; the service also limits the decoded text to 100,000 characters.
-      max-file-size: 512KB
-      max-request-size: 600KB
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 server:
   port: ${SERVER_PORT:8080}

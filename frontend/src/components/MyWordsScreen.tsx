@@ -3,6 +3,7 @@ import { ApiError } from "../api/client.ts";
 import type { VocabularyEntry } from "../api/vocabulary.ts";
 import type { VocabularyStore } from "../hooks/useVocabulary.ts";
 import { ARTICLE_STYLES, partOfSpeechLabel, vocabularyErrorMessage } from "./labels.ts";
+import { BackButton } from "./BackButton.tsx";
 import { LearningStats } from "./LearningStats.tsx";
 
 interface Props {
@@ -41,9 +42,7 @@ export function MyWordsScreen({ vocabulary, onBack }: Props) {
 
   return (
     <div>
-      <button type="button" onClick={onBack} className="-ml-2 mb-3 rounded-lg px-2 py-1 text-[13px] text-muted hover:bg-control hover:text-ink">
-        ← Library
-      </button>
+      <BackButton label="Back to Library" onClick={onBack} />
       <h1 className="font-serif text-xl font-medium">My words</h1>
       <p className="mt-1 text-[13px] text-muted">Words you saved while reading, newest first.</p>
 

@@ -1,18 +1,17 @@
-import { type ChangeEvent, type FormEvent, useEffect, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useState } from "react";
 import { ApiError, type ErrorCode } from "../api/client.ts";
 import {
   type DocumentSummary,
   MAX_TITLE_LENGTH,
-  MAX_UPLOAD_BYTES,
   type SavedDocument,
   deleteDocument,
   getDocument,
   listDocuments,
   renameDocument,
-  uploadDocument,
 } from "../api/documents.ts";
 import { forgetPosition } from "../text/readingPosition.ts";
 import { DeleteAccountPanel } from "./DeleteAccountPanel.tsx";
+import { ImportPanel } from "./ImportPanel.tsx";
 import { usePreference } from "../hooks/usePreference.ts";
 import type { BuiltinText } from "../api/library.ts";
 import { BuiltinLibrary } from "./BuiltinLibrary.tsx";
@@ -80,7 +79,7 @@ export function LibraryScreen({ account, onNew, onWords, onOpen, onOpenBuiltin }
   const [attempt, setAttempt] = useState(0);
   const [confirmingDeletion, setConfirmingDeletion] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   // Only one row is busy, asking for confirmation or being renamed at a time.
   const [busy, setBusy] = useState<Busy | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -116,33 +115,11 @@ export function LibraryScreen({ account, onNew, onWords, onOpen, onOpenBuiltin }
   const removeFromList = (id: string) =>
     setList((state) => (state.status === "ready" ? { ...state, documents: state.documents.filter((d) => d.id !== id) } : state));
 
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = ""; // choosing the same file again should upload again
-    if (!file) return;
-
-    // Quick checks for a friendly message without a round trip; the server checks the content itself.
-    if (!file.name.toLowerCase().endsWith(".txt") || file.size === 0) {
-      setNotice({ kind: "error", text: libraryErrorMessage("INVALID_UPLOAD") });
-      return;
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setNotice({ kind: "error", text: libraryErrorMessage("UPLOAD_TOO_LARGE") });
-      return;
-    }
-
-    setUploading(true);
-    setNotice(null);
-    try {
-      const saved = await uploadDocument(file);
-      setList((state) => (state.status === "ready" ? { ...state, documents: [saved, ...state.documents] } : state));
-      setTab("mine"); // an upload started from the built-in tab should be visible right away
-      setNotice({ kind: "success", text: `Added “${saved.title}” to your library.` });
-    } catch (error) {
-      setNotice({ kind: "error", text: libraryErrorMessage(codeOf(error)) });
-    } finally {
-      setUploading(false);
-    }
+  function handleImported(saved: SavedDocument) {
+    setList((state) => (state.status === "ready" ? { ...state, documents: [saved, ...state.documents] } : state));
+    setTab("mine"); // an import started from the built-in tab should be visible right away
+    setImportOpen(false);
+    setNotice({ kind: "success", text: `Imported “${saved.title}” into your library.` });
   }
 
   async function handleOpen(summary: DocumentSummary) {
@@ -231,18 +208,23 @@ export function LibraryScreen({ account, onNew, onWords, onOpen, onOpenBuiltin }
         <button type="button" onClick={onWords} className={secondaryButton}>
           My words
         </button>
-        <label
-          className={`${secondaryButton} cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent ${
-            uploading ? "pointer-events-none opacity-60" : ""
-          }`}
+        <button
+          type="button"
+          onClick={() => {
+            setImportOpen((open) => !open);
+            setNotice(null);
+          }}
+          aria-expanded={importOpen}
+          className={secondaryButton}
         >
-          <input type="file" accept=".txt,text/plain" className="sr-only" disabled={uploading} onChange={handleUpload} />
-          {uploading ? "Uploading…" : "Upload .txt"}
-        </label>
+          Import PDF or TXT
+        </button>
         <button type="button" onClick={onNew} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-sheet hover:opacity-90">
           New text
         </button>
       </div>
+
+      {importOpen && <ImportPanel onImported={handleImported} onCancel={() => setImportOpen(false)} />}
 
       {confirmingDeletion && (
         <DeleteAccountPanel
@@ -286,7 +268,7 @@ export function LibraryScreen({ account, onNew, onWords, onOpen, onOpenBuiltin }
           <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center">
             <p className="font-serif text-lg">Your library is empty</p>
             <p className="mt-1 text-[13px] text-muted">
-              Paste a German text with “New text”, upload a .txt file, or read one of the built-in texts.
+              Paste a German text with “New text”, import a PDF or TXT file, or read one of the built-in texts.
             </p>
           </div>
         )}

@@ -8,13 +8,8 @@ interface Props {
   onThemeChange: (theme: Theme) => void;
   language: TargetLanguage;
   onLanguageChange: (language: TargetLanguage) => void;
-  /** Mode switch and back button only exist while reading. */
-  reading: {
-    mode: TranslationType;
-    onModeChange: (mode: TranslationType) => void;
-    /** Saved texts go back to the library, unsaved ones back to editing. */
-    back: { to: "library" | "edit"; onClick: () => void };
-  } | null;
+  reading: { mode: TranslationType; onModeChange: (mode: TranslationType) => void } | null;
+  onHome?: () => void;
 }
 
 const LANGUAGES = [
@@ -29,16 +24,26 @@ const MODES = [
 
 const iconButton = "rounded-lg p-1 text-muted hover:bg-control hover:text-ink sm:p-1.5";
 
-export function Header({ theme, onThemeChange, language, onLanguageChange, reading }: Props) {
+export function Header({ theme, onThemeChange, language, onLanguageChange, reading, onHome }: Props) {
+  const brand = (
+    <>
+      <BookIcon />
+      {/* Below 400px the reading toolbar needs the space: the name is hidden visually, the icon stays. */}
+      <span className={reading ? "max-[399px]:sr-only" : ""}>Wortweise</span>
+    </>
+  );
+  const brandClass = "mr-auto flex items-center gap-2 font-serif text-[17px] font-medium";
   return (
-    // One row at every width: on phones narrower than 400px the reading toolbar needs the name's space,
-    // so the name is only hidden visually there (screen readers and the browser tab still have it).
     <header className="flex items-center gap-1.5 border-b border-line px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
-      <span className={`mr-auto font-serif text-[17px] font-medium ${reading ? "max-[399px]:sr-only" : ""}`}>
-        Lesehilfe
-      </span>
+      {onHome ? (
+        <button type="button" onClick={onHome} title="Go to your library" className={`${brandClass} -ml-1.5 rounded-lg px-1.5 py-0.5 hover:bg-control`}>
+          {brand}
+        </button>
+      ) : (
+        <span className={brandClass}>{brand}</span>
+      )}
       {reading && (
-        <div className="max-[399px]:mr-auto">
+        <div>
           <SegmentedControl label="Translate" value={reading.mode} options={MODES} onChange={reading.onModeChange} />
         </div>
       )}
@@ -53,16 +58,6 @@ export function Header({ theme, onThemeChange, language, onLanguageChange, readi
       >
         {theme === "dark" ? <SunIcon /> : <MoonIcon />}
       </button>
-      {reading && (
-        <button
-          type="button"
-          className={iconButton}
-          aria-label={reading.back.to === "library" ? "Back to library" : "Edit text"}
-          onClick={reading.back.onClick}
-        >
-          {reading.back.to === "library" ? <LibraryIcon /> : <PencilIcon />}
-        </button>
-      )}
     </header>
   );
 }
@@ -96,18 +91,11 @@ function SunIcon() {
   );
 }
 
-function LibraryIcon() {
+/** An open book: the brand mark. */
+function BookIcon() {
   return (
-    <svg {...iconProps}>
-      <path d="M4 19.5V5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2Zm0 0A2 2 0 0 0 6 21h13M9 7h6" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg {...iconProps}>
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+    <svg {...iconProps} className="text-accent">
+      <path d="M12 6.5C10.3 5.2 8 4.5 4 4.5v13c4 0 6.3.7 8 2 1.7-1.3 4-2 8-2v-13c-4 0-6.3.7-8 2Zm0 0v13" />
     </svg>
   );
 }

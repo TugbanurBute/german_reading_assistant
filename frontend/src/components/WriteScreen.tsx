@@ -2,6 +2,7 @@ import { type FormEvent, useId, useState } from "react";
 import { ApiError } from "../api/client.ts";
 import { MAX_CONTENT_LENGTH, MAX_TITLE_LENGTH, type SavedDocument, createDocument, titleFromText } from "../api/documents.ts";
 import { SAMPLE_TEXT } from "../text/sampleText.ts";
+import { BackButton } from "./BackButton.tsx";
 import { libraryErrorMessage } from "./labels.ts";
 
 interface Props {
@@ -42,9 +43,7 @@ export function WriteScreen({ title, text, onTitleChange, onTextChange, onSaved,
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <button type="button" onClick={onBack} className="-ml-2 mb-3 rounded-lg px-2 py-1 text-[13px] text-muted hover:bg-control hover:text-ink">
-        ← Library
-      </button>
+      <BackButton label="Back to Library" onClick={onBack} />
       <label htmlFor={fieldId} className="block font-serif text-xl font-medium">
         What would you like to read?
       </label>

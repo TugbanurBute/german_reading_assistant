@@ -1,6 +1,8 @@
 package com.germanreader;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -33,7 +35,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** The reading library end to end: HTTP, validation, Flyway schema and PostgreSQL. */
 @SpringBootTest(properties = {
         "translation.provider=mock",
         "spring.flyway.schemas=" + TranslationCacheIT.SCHEMA,
@@ -229,6 +230,46 @@ class ReadingDocumentIT {
         byte[] tooLong = "a".repeat(DocumentLimits.MAX_CONTENT_LENGTH + 1).getBytes(StandardCharsets.UTF_8);
 
         mockMvc.perform(multipart(URL + "/upload").file(new MockMultipartFile("file", "lang.txt", "text/plain", tooLong)))
+                .andExpect(status().isContentTooLarge())
+                .andExpect(jsonPath("$.code").value("UPLOAD_TOO_LARGE"));
+
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
+    void importedPdfIsStoredAsTextWithParagraphsAndQueuedForProcessing() throws Exception {
+        byte[] pdf = TestPdfs.text("Am Morgen sitzt meine Großmutter", "auf der Bank im Park.", "", "", "Sie füttert die Tauben.");
+
+        mockMvc.perform(multipart(URL + "/upload").file(new MockMultipartFile("file", "Großmutter.pdf", "application/pdf", pdf)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.title").value("Großmutter"))
+                .andExpect(jsonPath("$.processingStatus").value("PENDING"));
+
+        ReadingDocument row = repository.findAll().getFirst();
+        assertThat(row.getContent()).isEqualTo("Am Morgen sitzt meine Großmutter auf der Bank im Park.\n\nSie füttert die Tauben.");
+        assertThat(row.getOwnerId()).isEqualTo(TestAuth.USER_ID);
+    }
+
+    @Test
+    void pdfsWithoutTextOrWithEncryptionAreRejectedWithTheirOwnCode() throws Exception {
+        Map<String, byte[]> files = Map.of(
+                "PDF_NO_TEXT", TestPdfs.imageOnly(),
+                "PDF_ENCRYPTED", TestPdfs.encrypted("user-secret"));
+
+        for (Map.Entry<String, byte[]> file : files.entrySet()) {
+            mockMvc.perform(multipart(URL + "/upload").file(new MockMultipartFile("file", "buch.pdf", "application/pdf", file.getValue())))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(file.getKey()))
+                    .andExpect(jsonPath("$.detail").value(not(containsString("Exception"))));
+        }
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
+    void pdfsOverTheSizeLimitAreRejected() throws Exception {
+        byte[] tooLarge = new byte[6 * 1024 * 1024];
+
+        mockMvc.perform(multipart(URL + "/upload").file(new MockMultipartFile("file", "riesig.pdf", "application/pdf", tooLarge)))
                 .andExpect(status().isContentTooLarge())
                 .andExpect(jsonPath("$.code").value("UPLOAD_TOO_LARGE"));
 

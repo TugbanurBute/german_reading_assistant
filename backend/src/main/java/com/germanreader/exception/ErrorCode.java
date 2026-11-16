@@ -21,8 +21,12 @@ public enum ErrorCode {
             "The translation service rejected the request. The server's translation settings need to be checked."),
 
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "The document does not exist. It may have been deleted."),
-    INVALID_UPLOAD(HttpStatus.BAD_REQUEST, "The file must be a non-empty, UTF-8 encoded .txt text file."),
-    UPLOAD_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "The file is too large. The limit is 512 KB and 100,000 characters."),
+    INVALID_UPLOAD(HttpStatus.BAD_REQUEST, "The file must be a non-empty UTF-8 .txt file or a valid PDF."),
+    PDF_NO_TEXT(HttpStatus.BAD_REQUEST,
+            "This PDF has no selectable text. It may be a scanned image; only text-based PDFs can be imported."),
+    PDF_ENCRYPTED(HttpStatus.BAD_REQUEST, "This PDF is password-protected or encrypted. Remove the protection and try again."),
+    UPLOAD_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE,
+            "The file is too large. Limits: 512 KB for .txt, 5 MB and 300 pages for PDF, 100,000 characters of text."),
 
     VOCABULARY_NOT_FOUND(HttpStatus.NOT_FOUND, "The saved word does not exist. It may have been deleted."),
 

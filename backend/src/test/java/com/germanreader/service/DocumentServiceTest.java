@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.germanreader.TestPdfs;
 import com.germanreader.dto.document.DocumentLimits;
 import com.germanreader.dto.document.DocumentResponse;
 import com.germanreader.dto.document.DocumentSummary;
@@ -19,6 +20,9 @@ import com.germanreader.exception.DocumentException;
 import com.germanreader.exception.ErrorCode;
 import com.germanreader.repository.ReadingDocumentRepository;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -201,5 +205,77 @@ class DocumentServiceTest {
             String tooLong = "a".repeat(DocumentLimits.MAX_CONTENT_LENGTH + 1);
             assertRejected(txt("lang.txt", tooLong), ErrorCode.UPLOAD_TOO_LARGE);
         }
+    }
+
+    @Nested
+    class PdfUploads {
+
+        private static MockMultipartFile pdf(String filename, byte[] bytes) {
+            return new MockMultipartFile("file", filename, "application/pdf", bytes);
+        }
+
+        @Test
+        void storesTheTextOfATextBasedPdf() {
+            byte[] bytes = TestPdfs.text(List.of(
+                    List.of("Am Morgen sitzt meine Großmutter", "auf der Bank im Park.", "", "", "Sie füttert die Tauben."),
+                    List.of("Dann geht sie zum Bahn-", "hof.")));
+
+            service.upload(OWNER, pdf("Im Park.PDF", bytes));
+
+            ReadingDocument saved = savedDocument();
+            assertThat(saved.getTitle()).isEqualTo("Im Park");
+            assertThat(saved.getOwnerId()).isEqualTo(OWNER);
+            assertThat(saved.getContent()).isEqualTo("""
+                    Am Morgen sitzt meine Großmutter auf der Bank im Park.
+
+                    Sie füttert die Tauben.
+
+                    Dann geht sie zum Bahnhof.""");
+        }
+
+        @Test
+        void rejectsPdfsWithoutText() {
+            assertRejected(pdf("scan.pdf", TestPdfs.imageOnly()), ErrorCode.PDF_NO_TEXT);
+            assertRejected(pdf("leer.pdf", TestPdfs.withoutPages()), ErrorCode.PDF_NO_TEXT);
+        }
+
+        @Test
+        void rejectsEncryptedPdfs() {
+            assertRejected(pdf("geheim.pdf", TestPdfs.encrypted("user-secret")), ErrorCode.PDF_ENCRYPTED);
+            assertRejected(pdf("geschuetzt.pdf", TestPdfs.encrypted("")), ErrorCode.PDF_ENCRYPTED);
+        }
+
+        @Test
+        void rejectsFilesThatAreNotPdfs() {
+            assertRejected(pdf("buch.pdf", "%PDF-1.7".getBytes(StandardCharsets.US_ASCII)), ErrorCode.INVALID_UPLOAD);
+            assertRejected(pdf("text.pdf", "Nur Text, kein PDF.".getBytes(StandardCharsets.UTF_8)), ErrorCode.INVALID_UPLOAD);
+            byte[] truncated = Arrays.copyOf(TestPdfs.text("Ein Satz."), 200);
+            assertRejected(pdf("kaputt.pdf", truncated), ErrorCode.INVALID_UPLOAD);
+        }
+
+        @Test
+        void rejectsPdfsOverTheSizeLimit() {
+            byte[] tooLarge = new byte[(int) DocumentLimits.MAX_PDF_UPLOAD_BYTES + 1];
+            assertRejected(pdf("gross.pdf", tooLarge), ErrorCode.UPLOAD_TOO_LARGE);
+        }
+
+        @Test
+        void rejectsPdfsWithTooMuchText() {
+            List<String> page = Collections.nCopies(50, "Ein ziemlich langer Satz mit vielen deutschen Wörtern darin, Zeile.");
+            byte[] bytes = TestPdfs.text(Collections.nCopies(30, page));
+            assertRejected(pdf("roman.pdf", bytes), ErrorCode.UPLOAD_TOO_LARGE);
+        }
+
+        @Test
+        void rejectsTooManyPages() {
+            byte[] bytes = TestPdfs.text(Collections.nCopies(PdfTextExtractor.MAX_PAGES + 1, List.of("Seite.")));
+            assertRejected(pdf("seiten.pdf", bytes), ErrorCode.UPLOAD_TOO_LARGE);
+        }
+    }
+
+    @Test
+    void txtUploadsOverTheirSizeLimitAreRejected() {
+        byte[] tooLarge = "a".repeat((int) DocumentLimits.MAX_TXT_UPLOAD_BYTES + 1).getBytes(StandardCharsets.UTF_8);
+        assertRejected(txt("lang.txt", tooLarge), ErrorCode.UPLOAD_TOO_LARGE);
     }
 }

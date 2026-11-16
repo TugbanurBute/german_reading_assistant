@@ -70,11 +70,12 @@ export function AuthScreen({ notice, onAuthenticated }: Props) {
 
   return (
     <form onSubmit={handleSubmit} noValidate aria-labelledby={`${emailId}-heading`}>
+      <p className="mb-4 font-serif text-[15px] italic text-muted">Read naturally. Learn as you go.</p>
       <h1 id={`${emailId}-heading`} className="font-serif text-xl font-medium">
         {registering ? "Create an account" : "Log in"}
       </h1>
       <p className="mt-1 text-[13px] text-muted">
-        {registering ? "Your texts and words are only visible to you." : "Welcome back to Lesehilfe."}
+        {registering ? "Your texts and words are only visible to you." : "Welcome back to Wortweise."}
       </p>
       {notice && (
         <p role="status" className="mt-3 rounded-lg bg-control px-3 py-2 text-[13px]">

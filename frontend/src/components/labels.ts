@@ -85,7 +85,7 @@ export function errorCopy(code: ErrorCode, retryAfterSeconds?: number): ErrorCop
     case "TRANSLATION_BUDGET_EXHAUSTED":
       return {
         title: "Translations paused for today",
-        body: `Lesehilfe has reached its daily translation limit. ${resetText(retryAfterSeconds)} Words looked up before still work.`,
+        body: `Wortweise has reached its daily translation limit. ${resetText(retryAfterSeconds)} Words looked up before still work.`,
         canRetry: false,
       };
     case "MOCK_TRANSLATION_NOT_FOUND":
@@ -132,6 +132,8 @@ export function errorCopy(code: ErrorCode, retryAfterSeconds?: number): ErrorCop
       };
     case "DOCUMENT_NOT_FOUND":
     case "INVALID_UPLOAD":
+    case "PDF_NO_TEXT":
+    case "PDF_ENCRYPTED":
     case "UPLOAD_TOO_LARGE": // library and vocabulary codes; the translation endpoint never returns them
     case "VOCABULARY_NOT_FOUND":
     case "UNAUTHENTICATED": // the app returns to the login screen when this happens
@@ -161,9 +163,13 @@ export function libraryErrorMessage(code: ErrorCode): string {
     case "DOCUMENT_NOT_FOUND":
       return "This text no longer exists. It may have been deleted.";
     case "INVALID_UPLOAD":
-      return "Only non-empty .txt files saved as UTF-8 can be uploaded.";
+      return "This file can't be imported. Choose a .txt file saved as UTF-8 or a PDF that isn't damaged.";
+    case "PDF_NO_TEXT":
+      return "This PDF has no selectable text. It may be a scanned image; only text-based PDFs can be imported.";
+    case "PDF_ENCRYPTED":
+      return "This PDF is password-protected. Remove the protection and import it again.";
     case "UPLOAD_TOO_LARGE":
-      return "The file is too large. The limit is 512 KB and 100,000 characters.";
+      return "The file is too large. Limits: 512 KB for .txt, 5 MB and 300 pages for PDF, and 100,000 characters of text.";
     case "VALIDATION_ERROR":
     case "MALFORMED_REQUEST":
     case "REQUEST_ERROR":

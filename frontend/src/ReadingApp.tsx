@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { User } from "./api/auth.ts";
 import type { CefrLevel } from "./api/library.ts";
 import type { TargetLanguage, TranslationType } from "./api/types.ts";
+import { BackButton } from "./components/BackButton.tsx";
 import { Header, type Theme } from "./components/Header.tsx";
 import { LibraryScreen } from "./components/LibraryScreen.tsx";
 import { MyWordsScreen } from "./components/MyWordsScreen.tsx";
@@ -52,17 +53,8 @@ export function ReadingApp({ user, onLogout, onAccountDeleted, theme, onThemeCha
           onThemeChange={onThemeChange}
           language={language}
           onLanguageChange={onLanguageChange}
-          reading={
-            screen.name === "reading"
-              ? {
-                  mode,
-                  onModeChange: setMode,
-                  back: screen.documentId
-                    ? { to: "library", onClick: toLibrary }
-                    : { to: "edit", onClick: () => setScreen({ name: "write" }) },
-                }
-              : null
-          }
+          reading={screen.name === "reading" ? { mode, onModeChange: setMode } : null}
+          onHome={toLibrary}
         />
         <main className="px-3 py-6 sm:px-6 sm:py-10">
           <div className="mx-auto max-w-[44rem] rounded-xl border border-line bg-sheet px-5 py-6 sm:px-10 sm:py-9">
@@ -95,6 +87,12 @@ export function ReadingApp({ user, onLogout, onAccountDeleted, theme, onThemeCha
             {screen.name === "words" && <MyWordsScreen vocabulary={vocabulary} onBack={toLibrary} />}
             {screen.name === "reading" && document && (
               <>
+                {/* Saved and built-in texts go back to the library, a text read without saving back to editing. */}
+                {screen.documentId ? (
+                  <BackButton label="Back to Library" onClick={toLibrary} />
+                ) : (
+                  <BackButton label="Edit text" onClick={() => setScreen({ name: "write" })} />
+                )}
                 {screen.level && <p className="mb-1 text-[13px] font-medium text-muted">Level {screen.level}</p>}
                 {screen.title && <h1 className="mb-5 font-serif text-2xl font-medium">{screen.title}</h1>}
                 {/* A new key starts a new reading (first page, fresh position) for every text opened. */}
