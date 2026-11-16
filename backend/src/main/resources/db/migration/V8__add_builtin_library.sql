@@ -1,6 +1,3 @@
--- Built-in reading texts (A1-B1), stored once and shared by all users. They have no owner, so the personal
--- document endpoints (which always filter by owner_id) can never show, rename or delete them.
--- BuiltinLibrarySeeder inserts or updates them by builtin_key at startup.
 ALTER TABLE reading_document
     ADD COLUMN builtin_key VARCHAR(80),
     ADD COLUMN cefr_level  VARCHAR(2),

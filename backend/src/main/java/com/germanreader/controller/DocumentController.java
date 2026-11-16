@@ -41,7 +41,6 @@ public class DocumentController {
         return created(documentService.create(AuthTokens.userId(jwt), request.title(), request.content()));
     }
 
-    /** Not required here, so a missing file gets the same INVALID_UPLOAD answer as an empty one. */
     @PostMapping(path = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<DocumentResponse> upload(@AuthenticationPrincipal Jwt jwt,
                                                    @RequestPart(name = "file", required = false) MultipartFile file) {

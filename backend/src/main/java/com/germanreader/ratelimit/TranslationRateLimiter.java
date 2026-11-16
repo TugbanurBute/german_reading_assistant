@@ -13,23 +13,11 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
-/**
- * Fixed-window rate limit for translations, counted in Redis so it holds across restarts and several backend
- * instances. Windows are aligned to the clock (e.g. 12:00:00–12:00:59 for a 60 s window); each user has one
- * counter per window: {@code rate:translations:<userId>:<window number>}.
- *
- * <p>If Redis is unreachable the request is allowed (fail-open): the limit is a safeguard, and an outage of it
- * should not stop everyone from reading. Logins, the PostgreSQL cache and Gemini's own quota still apply.
- */
 @Slf4j
 @Component
 @EnableConfigurationProperties(RateLimitProperties.class)
 public class TranslationRateLimiter {
 
-    /**
-     * INCR and, for the first request of a window, PEXPIRE, as one atomic step. As two separate calls, a crash
-     * in between could leave a counter without expiry, blocking that user for good.
-     */
     static final RedisScript<Long> INCREMENT = RedisScript.of("""
             local count = redis.call('INCR', KEYS[1])
             if count == 1 then
@@ -41,10 +29,9 @@ public class TranslationRateLimiter {
     private final StringRedisTemplate redis;
     private final RateLimitProperties properties;
     private final Clock clock;
-    /** Logs the outage once instead of on every request. */
     private final AtomicBoolean redisDown = new AtomicBoolean(false);
 
-    @Autowired // the other constructor takes a test clock
+    @Autowired
     public TranslationRateLimiter(StringRedisTemplate redis, RateLimitProperties properties) {
         this(redis, properties, Clock.systemUTC());
     }
@@ -55,7 +42,6 @@ public class TranslationRateLimiter {
         this.clock = clock;
     }
 
-    /** Counts one translation for this user; throws when the window's limit is already used up. */
     public void check(UUID userId) {
         if (!properties.enabled()) {
             return;

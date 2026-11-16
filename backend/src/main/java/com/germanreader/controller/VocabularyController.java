@@ -30,7 +30,6 @@ public class VocabularyController {
         this.vocabularyService = vocabularyService;
     }
 
-    /** 201 for a new entry; 200 with the existing entry when this meaning is already saved. */
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<VocabularyResponse> save(@AuthenticationPrincipal Jwt jwt,
                                                    @Valid @RequestBody SaveVocabularyRequest request) {

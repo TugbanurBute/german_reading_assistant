@@ -14,12 +14,6 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.json.JsonMapper;
 
-/**
- * Cache-first translation: database lookup, then at most one provider call per identical request, then save.
- *
- * <p>Deliberately not {@code @Transactional}: each repository call runs in its own short transaction,
- * so no database connection is held while waiting for the provider.
- */
 @Slf4j
 @Service
 public class TranslationService {
@@ -28,7 +22,6 @@ public class TranslationService {
     private final TranslationCacheRepository cacheRepository;
     private final JsonMapper jsonMapper;
 
-    /** Provider calls in progress, by cache key. Identical concurrent requests wait for the same call. */
     private final ConcurrentMap<String, CompletableFuture<TranslationResponse>> inFlight = new ConcurrentHashMap<>();
 
     public TranslationService(TranslationProvider provider, TranslationCacheRepository cacheRepository,
@@ -41,11 +34,9 @@ public class TranslationService {
     public TranslationResponse translate(TranslationRequest request) {
         TranslationCacheKey key = TranslationCacheKey.of(provider.cacheNamespace(), provider.promptVersion(), request);
         TranslationResponse response = findCached(key).orElseGet(() -> translateOnce(key, request));
-        // A cached answer may come from a request that differed only in whitespace.
         return response.withOriginalText(request.selectedText());
     }
 
-    /** Single-flight: the first caller for a key calls the provider, later callers wait for its result. */
     private TranslationResponse translateOnce(TranslationCacheKey key, TranslationRequest request) {
         CompletableFuture<TranslationResponse> ownCall = new CompletableFuture<>();
         CompletableFuture<TranslationResponse> runningCall = inFlight.putIfAbsent(key.hash(), ownCall);
@@ -55,16 +46,13 @@ public class TranslationService {
         }
 
         try {
-            // A previous call may have cached the answer between our lookup and putIfAbsent.
             TranslationResponse response = findCached(key).orElseGet(() -> translateAndCache(key, request));
             ownCall.complete(response);
             return response;
         } catch (Throwable e) {
-            // Waiting callers get the same error; nothing is cached.
             ownCall.completeExceptionally(e);
             throw e;
         } finally {
-            // Always removed, so the next request after a failure calls the provider again.
             inFlight.remove(key.hash(), ownCall);
         }
     }
@@ -88,8 +76,6 @@ public class TranslationService {
                 log.debug("Translation was already cached by another request");
             }
         } catch (DataAccessException e) {
-            // The translation succeeded; a failed cache write must not cost the user the answer.
-            // Only the exception type is logged: database messages can contain the request text.
             log.warn("Could not cache translation: {}", e.getClass().getSimpleName());
         }
     }

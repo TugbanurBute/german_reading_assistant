@@ -64,7 +64,6 @@ public class DocumentProcessingConfig {
                 .with(DEAD_LETTER_QUEUE);
     }
 
-    /** JSON messages; used by RabbitTemplate and the listener (Spring Boot applies it to both). */
     @Bean
     MessageConverter jsonMessageConverter() {
         return new JacksonJsonMessageConverter();

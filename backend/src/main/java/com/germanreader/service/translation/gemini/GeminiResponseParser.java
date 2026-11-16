@@ -40,7 +40,6 @@ final class GeminiResponseParser {
     private final JsonMapper jsonMapper;
 
     GeminiResponseParser(JsonMapper jsonMapper) {
-        // Extra fields from a future model version should not break parsing.
         this.jsonMapper = jsonMapper.rebuild()
                 .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .build();

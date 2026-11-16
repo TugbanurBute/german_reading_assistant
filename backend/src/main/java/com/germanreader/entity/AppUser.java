@@ -13,11 +13,10 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** An account. Only the BCrypt hash of the password is stored. */
 @Entity
 @Table(name = "app_user")
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED) // required by JPA, not for application code
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AppUser {
 
     @Id
@@ -41,6 +40,6 @@ public class AppUser {
 
     @Override
     public String toString() {
-        return "AppUser[id=" + id + "]"; // never the email or the hash
+        return "AppUser[id=" + id + "]";
     }
 }

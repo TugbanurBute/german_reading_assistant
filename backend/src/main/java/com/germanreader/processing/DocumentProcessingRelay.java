@@ -33,7 +33,6 @@ public class DocumentProcessingRelay {
     private final boolean enabled;
     private final Duration lease;
     private final Duration confirmTimeout;
-    /** Logs a RabbitMQ outage once instead of on every run. */
     private final AtomicBoolean brokerDown = new AtomicBoolean(false);
 
     public DocumentProcessingRelay(JdbcTemplate jdbc, RabbitTemplate rabbit, TransactionTemplate transaction,
@@ -78,13 +77,11 @@ public class DocumentProcessingRelay {
                 count++;
             }
         } catch (DataAccessException | TransactionException e) {
-            // E.g. the commit failed after RabbitMQ confirmed: the row stays unqueued and is published again later.
             log.warn("Outbox update failed ({}); the document will be published again", e.getClass().getSimpleName());
         }
         return count;
     }
 
-    /** Only documents waiting for a message: PENDING, not yet queued, never the read-only built-in texts. */
     private Boolean publishNext() {
         List<DocumentProcessingRequested> next = jdbc.query("""
                 SELECT id, processing_version FROM reading_document
@@ -110,7 +107,6 @@ public class DocumentProcessingRelay {
                 return false;
             }
             if (correlation.getReturned() != null) {
-                // Mandatory publish that no queue accepted: the broker confirms it but drops it.
                 log.warn("Document {} could not be routed to a queue ({}); it stays in the outbox",
                         message.documentId(), correlation.getReturned().getReplyText());
                 return false;

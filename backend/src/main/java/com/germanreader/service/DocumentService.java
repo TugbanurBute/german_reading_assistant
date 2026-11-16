@@ -86,7 +86,6 @@ public class DocumentService {
 
     @Transactional
     public DocumentSummary rename(UUID id, UUID ownerId, String title) {
-        // PostgreSQL stores microseconds; truncating keeps the returned value equal to the stored one.
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         if (repository.rename(id, ownerId, title.strip(), now) == 0) {
             throw notFound(id);

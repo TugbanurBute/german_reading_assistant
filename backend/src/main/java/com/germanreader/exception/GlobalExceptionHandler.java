@@ -59,7 +59,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(DocumentException.class)
     ResponseEntity<Object> handleDocumentException(DocumentException ex) {
-        // The message holds ids and reasons only, never document text.
         log.debug("Document request rejected with {}: {}", ex.getErrorCode(), ex.getMessage());
         return problem(ex.getErrorCode(), null);
     }
@@ -77,19 +76,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(AuthException.class)
     ResponseEntity<Object> handleAuthException(AuthException ex) {
-        // The message never contains the email, password or token.
         log.debug("Auth request rejected with {}: {}", ex.getErrorCode(), ex.getMessage());
         return problem(ex.getErrorCode(), null);
     }
 
     @ExceptionHandler(VocabularyException.class)
     ResponseEntity<Object> handleVocabularyException(VocabularyException ex) {
-        // The message holds ids only, never the saved words or sentences.
         log.debug("Vocabulary request rejected with {}: {}", ex.getErrorCode(), ex.getMessage());
         return problem(ex.getErrorCode(), null);
     }
 
-    /** Thrown while the multipart request is parsed, before the controller runs. */
     @Override
     protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
             MaxUploadSizeExceededException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
@@ -107,8 +103,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     protected ResponseEntity<Object> handleExceptionInternal(
             Exception ex, Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {
 
-        // The base class creates the ProblemDetail body for framework exceptions inside this call,
-        // so the code can only be added to the response it returns.
         ResponseEntity<Object> response = super.handleExceptionInternal(ex, body, headers, statusCode, request);
         if (response != null && response.getBody() instanceof ProblemDetail problem
                 && (problem.getProperties() == null || !problem.getProperties().containsKey("code"))) {

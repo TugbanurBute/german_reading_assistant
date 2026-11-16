@@ -28,8 +28,6 @@ public record TranslationCacheKey(
                 ? TextNormalizer.normalize(request.context())
                 : null;
 
-        // Normalized text never contains '\n' (all whitespace becomes a single space),
-        // so joining with '\n' cannot make two different field combinations look identical.
         String identity = String.join("\n", provider, promptVersion, request.translationType().name(),
                 request.sourceLanguage().name(), request.targetLanguage().name(), text,
                 context == null ? "" : context);

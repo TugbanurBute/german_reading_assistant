@@ -27,7 +27,6 @@ public class MockTranslationProvider implements TranslationProvider {
     private final Map<String, MockSentence> sentences = new HashMap<>();
     private final Map<WordKey, MockWord> words = new HashMap<>();
 
-    /** One sentence of the sample text with its translations and the words that can be looked up. */
     record MockSentence(String sentence, Map<TargetLanguage, String> translations, List<MockWord> words) {
     }
 
@@ -94,7 +93,6 @@ public class MockTranslationProvider implements TranslationProvider {
     }
 
     private static TranslationException notFound(TranslationRequest request) {
-        // Deliberately no user text in the message: it is logged.
         return new TranslationException(ErrorCode.MOCK_TRANSLATION_NOT_FOUND,
                 "No mock entry for " + request.translationType() + " request");
     }

@@ -21,7 +21,7 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "translation_cache")
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED) // required by JPA, not for application code
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TranslationCacheEntry {
 
     @Id
@@ -60,7 +60,7 @@ public class TranslationCacheEntry {
     @Column(nullable = false, updatable = false)
     private String response;
 
-    @Column(insertable = false, updatable = false) // filled by the database default now()
+    @Column(insertable = false, updatable = false)
     private Instant createdAt;
 
     public TranslationCacheEntry(String cacheKey, String provider, String promptVersion,

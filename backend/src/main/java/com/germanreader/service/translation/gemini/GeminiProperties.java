@@ -13,7 +13,6 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "translation.gemini")
 public record GeminiProperties(
-        // No @Pattern here: a failed pattern check would print the value, i.e. the key, in the startup error.
         @NotBlank String apiKey,
         @NotBlank
         @Pattern(regexp = "(models/)?[A-Za-z0-9][A-Za-z0-9._-]*",
@@ -25,7 +24,6 @@ public record GeminiProperties(
 ) {
 
     public GeminiProperties {
-        // Values pasted with spaces or quotes around them are a common reason for "API key not valid".
         apiKey = unquote(apiKey);
         model = unquote(model);
     }

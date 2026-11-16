@@ -8,10 +8,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-/**
- * CORS for the frontend, applied by Spring Security before authentication (so preflights never need a token).
- * Origins are always listed explicitly: with credentials (the auth cookie) a wildcard is not allowed.
- */
 @Configuration
 @EnableConfigurationProperties(CorsProperties.class)
 public class WebConfig {

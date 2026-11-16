@@ -63,7 +63,6 @@ final class GeminiPrompts {
         return type == TranslationType.WORD ? WORD_INSTRUCTION : SENTENCE_INSTRUCTION;
     }
 
-    /** The user turn: request values as a JSON object. */
     static String userMessage(TranslationRequest request, JsonMapper jsonMapper) {
         Map<String, String> input = new LinkedHashMap<>();
         if (request.translationType() == TranslationType.WORD) {
@@ -87,8 +86,6 @@ final class GeminiPrompts {
         };
     }
 
-    // --- Response schemas -------------------------------------------------------------------------
-
     private static final Schema SENTENCE_SCHEMA = Schema.builder()
             .type(Type.Known.OBJECT)
             .properties(Map.of("translation", text(false)))
@@ -98,7 +95,6 @@ final class GeminiPrompts {
     private static final Schema WORD_SCHEMA = wordSchema();
 
     private static Schema wordSchema() {
-        // Insertion order = order the model generates fields: analysis first, translations last.
         Map<String, Schema> properties = new LinkedHashMap<>();
         properties.put("lemma", text(true));
         properties.put("partOfSpeech", oneOf(PartOfSpeech.values()));

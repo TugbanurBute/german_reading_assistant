@@ -54,7 +54,7 @@ public class SecurityConfig {
     SecurityFilterChain apiSecurity(HttpSecurity http, ProblemResponses problems, JwtDecoder jwtDecoder,
                                     AuthProperties properties) throws Exception {
         http
-                .cors(Customizer.withDefaults()) // uses WebConfig's CorsConfigurationSource
+                .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.spa().csrfTokenRepository(csrfCookies(properties)))
                 .addFilterAfter(csrfCookieFilter(), CsrfFilter.class)
                 .addFilterAt(tokenFilter(jwtDecoder, problems), BearerTokenAuthenticationFilter.class)
@@ -74,12 +74,6 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /**
-     * Reads the JWT from the cookie and authenticates the request with it. Added as a plain filter instead of
-     * http.oauth2ResourceServer(), because that configurer turns CSRF protection off for every request that
-     * carries a token: right for Authorization headers, wrong for a cookie the browser sends on its own.
-     * Invalid or expired tokens end in {@link ProblemResponses#commence} (401).
-     */
     private static BearerTokenAuthenticationFilter tokenFilter(JwtDecoder jwtDecoder, ProblemResponses problems) {
         var filter = new BearerTokenAuthenticationFilter(new ProviderManager(new JwtAuthenticationProvider(jwtDecoder)));
         filter.setBearerTokenResolver(SecurityConfig::tokenFromCookie);
@@ -128,7 +122,6 @@ public class SecurityConfig {
         }
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
         if (bytes.length < MIN_SECRET_BYTES) {
-            // Fixed message: the secret itself must never appear in a log.
             throw new IllegalStateException("JWT_SECRET is too short: it needs at least " + MIN_SECRET_BYTES + " bytes.");
         }
         return new SecretKeySpec(bytes, "HmacSHA256");

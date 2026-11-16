@@ -45,12 +45,6 @@ public interface ReadingDocumentRepository extends JpaRepository<ReadingDocument
     @Query("DELETE FROM ReadingDocument d WHERE d.id = :id AND d.ownerId = :ownerId")
     int deleteDocumentById(@Param("id") UUID id, @Param("ownerId") UUID ownerId);
 
-    /*
-     * Processing. A claim stores its start time in processing_started_at; that value is the claim's fencing token.
-     * Completing or releasing needs the token, so a worker whose claim expired and was taken over writes nothing.
-     */
-
-    /** Claims a PENDING document, or one whose claim has expired. Never FAILED ones (see requeueFailed). */
     @Transactional
     @Modifying
     @Query("""
@@ -81,7 +75,6 @@ public interface ReadingDocumentRepository extends JpaRepository<ReadingDocument
                            @Param("words") int words, @Param("characters") int characters,
                            @Param("paragraphs") int paragraphs, @Param("processedAt") Instant processedAt);
 
-    /** Gives the claim back after an error, so the retry of the same message can claim it again. */
     @Transactional
     @Modifying
     @Query("""
@@ -93,10 +86,6 @@ public interface ReadingDocumentRepository extends JpaRepository<ReadingDocument
             """)
     int releaseProcessing(@Param("id") UUID id, @Param("version") int version, @Param("claimedAt") Instant claimedAt);
 
-    /**
-     * After the retries are used up. Only an unclaimed document: another worker's live claim is left alone, and a
-     * claim that could not be released expires and is re-queued by the relay.
-     */
     @Transactional
     @Modifying
     @Query("""
@@ -106,10 +95,6 @@ public interface ReadingDocumentRepository extends JpaRepository<ReadingDocument
             """)
     int failProcessing(@Param("id") UUID id, @Param("version") int version);
 
-    /**
-     * The explicit way back from FAILED: a new version, so delayed copies of the old messages are ignored, and back
-     * into the outbox for the relay.
-     */
     @Transactional
     @Modifying
     @Query("""

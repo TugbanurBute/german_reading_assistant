@@ -14,7 +14,7 @@ public enum ErrorCode {
     PROVIDER_RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE, "The translation service is busy. Please try again in a moment."),
     PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "The translation service is currently unavailable."),
     PROVIDER_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "The translation service took too long to respond."),
-    // Configuration problems: retrying does not help until the server's settings change.
+
     PROVIDER_MODEL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE,
             "The configured translation model is not available. It may have been retired."),
     PROVIDER_REJECTED(HttpStatus.SERVICE_UNAVAILABLE,

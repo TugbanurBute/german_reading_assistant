@@ -11,7 +11,6 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-/** Every query that the API uses takes the owner, like ReadingDocumentRepository. */
 public interface VocabularyEntryRepository extends JpaRepository<VocabularyEntry, UUID> {
 
     String SELECT_RESPONSE = """
@@ -28,7 +27,6 @@ public interface VocabularyEntryRepository extends JpaRepository<VocabularyEntry
     @Query(SELECT_RESPONSE + " WHERE v.id = :id AND v.ownerId = :ownerId")
     Optional<VocabularyResponse> findResponseById(@Param("id") UUID id, @Param("ownerId") UUID ownerId);
 
-    /** The owner's entry for this meaning, compared the same way as the unique index ux_vocabulary_entry_meaning. */
     @Query("""
             SELECT v.id FROM VocabularyEntry v
             WHERE v.ownerId = :ownerId
@@ -41,7 +39,6 @@ public interface VocabularyEntryRepository extends JpaRepository<VocabularyEntry
                                @Param("targetLanguage") TargetLanguage targetLanguage,
                                @Param("translation") String translation);
 
-    /** One DELETE statement; returns 0 when the owner has no such entry. */
     @Modifying
     @Query("DELETE FROM VocabularyEntry v WHERE v.id = :id AND v.ownerId = :ownerId")
     int deleteEntryById(@Param("id") UUID id, @Param("ownerId") UUID ownerId);

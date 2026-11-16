@@ -49,7 +49,6 @@ public class AuthController {
         return loggedIn(HttpStatus.OK, authService.login(request.email(), request.password()));
     }
 
-    /** Stateless tokens can't be revoked on the server; logging out removes the cookie from the browser. */
     @PostMapping("/logout")
     public ResponseEntity<Void> logout() {
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, tokens.clearedCookie().toString()).build();

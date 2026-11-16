@@ -29,7 +29,6 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      # Short, so an unreachable Redis costs a translation at most half a second (then fail-open).
       timeout: 500ms
       connect-timeout: 500ms
   datasource:
@@ -82,14 +81,11 @@ app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
   auth:
-    # HMAC key for signing login tokens, at least 32 bytes. Required outside the local profile.
     jwt-secret: ${JWT_SECRET:}
     token-ttl: ${AUTH_TOKEN_TTL:8h}
-    # Secure cookies need HTTPS; only the local profile turns this off.
     cookie-secure: ${AUTH_COOKIE_SECURE:true}
   rate-limit:
     translations:
-      # Per user, fixed window: at most `limit` translation requests per `window`.
       enabled: ${TRANSLATION_RATE_LIMIT_ENABLED:true}
       limit: ${TRANSLATION_RATE_LIMIT:10}
       window: ${TRANSLATION_RATE_WINDOW:60s}
@@ -105,17 +101,13 @@ app:
     translations-per-user-per-day: ${TRANSLATION_DAILY_LIMIT:200}
     provider-calls-per-day: ${GEMINI_DAILY_CALL_LIMIT:500}
   vocabulary-events:
-    # false: no events are published or consumed; statistics stay as they are.
     enabled: ${VOCABULARY_EVENTS_ENABLED:true}
     relay-interval: PT2S
   analytics:
-    # The time zone that decides which day a saved word counts for, and what "today" is.
     time-zone: ${ANALYTICS_TIME_ZONE:UTC}
   document-processing:
-    # false: no messages are published or consumed; documents stay PENDING (reading is unaffected).
     enabled: ${DOCUMENT_PROCESSING_ENABLED:true}
     relay-interval: PT2S
-    # A claim (PROCESSING) or a queued message older than this counts as lost and is re-queued.
     lease: ${DOCUMENT_PROCESSING_LEASE:PT5M}
     confirm-timeout: PT5S
 
@@ -125,5 +117,4 @@ translation:
     api-key: ${GEMINI_API_KEY:}
     model: ${GEMINI_MODEL:}
     timeout: ${GEMINI_TIMEOUT:15s}
-    # true: ask Google once at startup whether GEMINI_MODEL exists (logged, never stops the app)
     verify-model: ${GEMINI_VERIFY_MODEL:false}

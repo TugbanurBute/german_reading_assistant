@@ -16,10 +16,6 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
-/**
- * 401 and 403 answers from Spring Security, in the same problem-details format (with a "code") as every
- * other error of the API. Neither the token nor the reason it was rejected is logged or returned.
- */
 @Component
 public class ProblemResponses implements AuthenticationEntryPoint, AccessDeniedHandler {
 
@@ -31,18 +27,15 @@ public class ProblemResponses implements AuthenticationEntryPoint, AccessDeniedH
         this.tokens = tokens;
     }
 
-    /** No token, or an expired, tampered or otherwise invalid one. */
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException e)
             throws IOException {
         if (hasTokenCookie(request)) {
-            // The token is no longer valid: let the browser drop it.
             response.addHeader(HttpHeaders.SET_COOKIE, tokens.clearedCookie().toString());
         }
         write(response, ErrorCode.UNAUTHENTICATED);
     }
 
-    /** Logged in, but the request was refused: here, a missing or wrong CSRF token. */
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException e)
             throws IOException {

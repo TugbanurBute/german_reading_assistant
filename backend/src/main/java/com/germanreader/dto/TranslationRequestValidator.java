@@ -9,7 +9,6 @@ public class TranslationRequestValidator
 
     @Override
     public boolean isValid(TranslationRequest request, ConstraintValidatorContext context) {
-        // Single-field problems (nulls, blanks) are reported by the field annotations already.
         if (request.translationType() != TranslationType.WORD || isBlank(request.selectedText())) {
             return true;
         }

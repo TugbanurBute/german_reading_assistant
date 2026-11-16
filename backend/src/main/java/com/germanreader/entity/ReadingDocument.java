@@ -26,7 +26,6 @@ public class ReadingDocument {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    /** The user the text belongs to; null only for texts from before accounts existed (see V4). */
     @Column(updatable = false)
     private UUID ownerId;
 

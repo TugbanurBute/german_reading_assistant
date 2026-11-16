@@ -21,7 +21,6 @@ final class PdfTextExtractor {
     }
 
     static String extract(InputStream pdfBytes, int maxCharacters) {
-        // Streams are cached in a temp file, not on the heap; the file itself is bounded by the multipart limit.
         try (PDDocument pdf = Loader.loadPDF(new RandomAccessReadBuffer(pdfBytes), "", null, null,
                 IOUtils.createTempFileOnlyStreamCache())) {
             if (pdf.isEncrypted()) {
@@ -55,7 +54,6 @@ final class PdfTextExtractor {
             stripper.setStartPage(page);
             stripper.setEndPage(page);
             text.append(stripper.getText(pdf)).append("\n\n");
-            // Raw text has extra spaces and line breaks; twice the limit is clearly too long either way.
             if (text.length() > 2L * maxCharacters) {
                 throw new DocumentException(ErrorCode.UPLOAD_TOO_LARGE, "PDF text exceeds the limit by page " + page);
             }

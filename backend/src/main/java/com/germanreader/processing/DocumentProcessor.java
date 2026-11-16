@@ -28,7 +28,6 @@ public class DocumentProcessor {
 
     @RabbitListener(queues = DocumentProcessingConfig.QUEUE, autoStartup = "${app.document-processing.enabled:true}")
     public void process(DocumentProcessingRequested message) {
-        // The claim's start time is also its fencing token for completing or releasing it.
         Instant claimedAt = Instant.now().truncatedTo(ChronoUnit.MICROS);
         if (documents.startProcessing(message.documentId(), message.version(), claimedAt, claimedAt.minus(lease)) == 0) {
             log.debug("Skipping document {} v{}: deleted, stale, done, failed or being processed",
@@ -52,7 +51,7 @@ public class DocumentProcessor {
             log.debug("Processed document {} v{}", message.documentId(), message.version());
         } catch (RuntimeException e) {
             release(message, claimedAt);
-            throw e; // retried, then dead-lettered
+            throw e;
         }
     }
 

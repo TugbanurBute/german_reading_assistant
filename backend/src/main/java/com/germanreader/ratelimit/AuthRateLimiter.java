@@ -23,7 +23,7 @@ public class AuthRateLimiter {
     private final Clock clock;
     private final AtomicBoolean redisDown = new AtomicBoolean(false);
 
-    @Autowired // the other constructor takes a test clock
+    @Autowired
     public AuthRateLimiter(StringRedisTemplate redis, AuthRateLimitProperties properties) {
         this(redis, properties, Clock.systemUTC());
     }

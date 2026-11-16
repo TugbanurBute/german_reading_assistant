@@ -14,9 +14,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Registration and login. Logs user ids only: never emails, passwords or tokens.
- */
 @Slf4j
 @Service
 public class AuthService {
@@ -43,16 +40,13 @@ public class AuthService {
             log.info("Registered user {}", user.getId());
             return user;
         } catch (DataIntegrityViolationException e) {
-            // The same email registered at the same moment (unique index).
             throw new AuthException(ErrorCode.EMAIL_TAKEN, "Email already registered");
         }
     }
 
-    /** A wrong password and an unknown email give the same answer. */
     @Transactional(readOnly = true)
     public AppUser login(String email, String password) {
         return users.findByEmail(normalizeEmail(email))
-                // Registration refuses passwords over 72 bytes, and BCrypt can't check them.
                 .filter(user -> !tooLong(password) && passwordEncoder.matches(password, user.getPasswordHash()))
                 .orElseThrow(() -> new AuthException(ErrorCode.INVALID_CREDENTIALS, "Login failed"));
     }
